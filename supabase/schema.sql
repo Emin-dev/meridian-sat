@@ -105,6 +105,30 @@ create index if not exists lesson_requests_student_idx on lesson_requests (stude
 create index if not exists lesson_requests_status_idx  on lesson_requests (status);
 create index if not exists lesson_requests_created_idx  on lesson_requests (created_at);
 
+-- ---------- Per-student adaptive tools ----------
+-- Proposed extra tools / pages / sub-features for an individual student, based
+-- on how they actually use the app (e.g. exam-pacing drills for someone who
+-- spends too long on exams, vocab flashcards for a reading struggler). Every
+-- proposal is gated behind teacher approval before the student ever sees it.
+create table if not exists student_tools (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid references students(id) on delete cascade,
+  status      text not null default 'pending',  -- pending | approved | denied
+  kind        text not null default 'tool',     -- tool | page | drill | practice
+  key         text not null,                    -- stable slug, unique per student
+  title       text not null,
+  description text default '',                   -- short student-facing blurb
+  icon        text default 'sparkles',           -- lucide icon name
+  config      jsonb default '{}'::jsonb,         -- tool-specific settings
+  rationale   text default '',                   -- why the system proposed this (admin-only)
+  source      text default 'auto',               -- auto | manual
+  created_at  timestamptz default now(),
+  reviewed_at timestamptz
+);
+create unique index if not exists student_tools_student_key_idx on student_tools (student_id, key);
+create index if not exists student_tools_student_idx on student_tools (student_id);
+create index if not exists student_tools_status_idx  on student_tools (status);
+
 -- ---------- Seed default AI prompts (admin can edit these in the UI) ----------
 insert into prompts (id, label, content) values
 (

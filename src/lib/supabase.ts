@@ -63,6 +63,24 @@ export type LessonRequest = {
   reviewed_at: string | null;
 };
 
+// A per-student adaptive tool / page proposed by the helper, gated behind
+// teacher approval before the student can see it.
+export type StudentTool = {
+  id: string;
+  student_id: string;
+  status: string; // 'pending' | 'approved' | 'denied'
+  kind: string;   // 'tool' | 'page' | 'drill' | 'practice'
+  key: string;
+  title: string;
+  description: string;
+  icon: string;
+  config: Record<string, any>;
+  rationale: string;
+  source: string; // 'auto' | 'manual'
+  created_at: string;
+  reviewed_at: string | null;
+};
+
 // A single logged activity event for a student.
 export type ActivityEvent = {
   id: string;

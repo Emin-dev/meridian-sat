@@ -19,7 +19,36 @@ import {
   Sparkles,
   CalendarCheck,
   ArrowRight,
+  Timer,
+  Calculator,
+  Flame,
+  RotateCcw,
+  Heart,
+  Trophy,
+  Glasses,
+  type LucideIcon,
 } from "lucide-react";
+
+// Icon slugs (from the tool catalog) -> lucide components.
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  timer: Timer,
+  "book-open": BookOpen,
+  calculator: Calculator,
+  flame: Flame,
+  "rotate-ccw": RotateCcw,
+  heart: Heart,
+  trophy: Trophy,
+  glasses: Glasses,
+  sparkles: Sparkles,
+};
+
+type StudentToolCard = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  kind: string;
+};
 
 function StudentInner() {
   const params = useSearchParams();
@@ -32,8 +61,9 @@ function StudentInner() {
   const [active, setActive] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPlan, setShowPlan] = useState(false);
-  const [nudge, setNudge] = useState<{ message: string; lessonId: string | null } | null>(null);
+  const [nudge, setNudge] = useState<{ message: string; lessonId: string | null; mood: string } | null>(null);
   const nudgeFetched = useRef(false);
+  const [tools, setTools] = useState<StudentToolCard[]>([]);
 
   // Invisible activity tracker — one per student session.
   const tracker = useMemo<Tracker | null>(
@@ -73,16 +103,34 @@ function StudentInner() {
     }
 
     // Quietly fetch a personalized "what to do next" nudge once per session.
+    // Uses the adaptive helper, which motivates differently depending on whether
+    // the student is thriving or struggling.
     if (me.status === "active" && !nudgeFetched.current) {
       nudgeFetched.current = true;
-      fetch("/api/ai/next-step", {
+      fetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId }),
+        body: JSON.stringify({ role: "student", studentId }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          if (d && d.message) setNudge({ message: d.message, lessonId: d.lessonId ?? null });
+          const a = d?.actions?.[0];
+          if (a)
+            setNudge({
+              message: a.why ? `${a.label} — ${a.why}` : a.label,
+              lessonId: a.target?.lessonId ?? null,
+              mood: d.mood || "steady",
+            });
+        })
+        .catch(() => {});
+    }
+
+    // Load any tools the teacher has approved for this student.
+    if (me.status === "active") {
+      fetch(`/api/student-tools?studentId=${studentId}&status=approved`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d?.tools) setTools(d.tools);
         })
         .catch(() => {});
     }
@@ -188,16 +236,45 @@ function StudentInner() {
                 setActive(target);
               }
             }}
-            className="mt-5 flex w-full items-center justify-between gap-3 rounded-xl border border-brand-200 bg-gradient-to-r from-brand-50 to-white p-4 text-left transition hover:border-brand-300 hover:shadow-pop animate-fadeUp"
+            className={`mt-5 flex w-full items-center justify-between gap-3 rounded-xl border p-4 text-left transition hover:shadow-pop animate-fadeUp ${
+              nudge.mood === "thriving"
+                ? "border-green-200 bg-gradient-to-r from-green-50 to-white hover:border-green-300"
+                : nudge.mood === "struggling"
+                ? "border-amber-200 bg-gradient-to-r from-amber-50 to-white hover:border-amber-300"
+                : "border-brand-200 bg-gradient-to-r from-brand-50 to-white hover:border-brand-300"
+            }`}
           >
             <span className="flex items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
-                <Sparkles size={16} />
+              <span
+                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white ${
+                  nudge.mood === "thriving"
+                    ? "bg-green-600"
+                    : nudge.mood === "struggling"
+                    ? "bg-amber-500"
+                    : "bg-brand-600"
+                }`}
+              >
+                {nudge.mood === "thriving" ? (
+                  <Trophy size={16} />
+                ) : nudge.mood === "struggling" ? (
+                  <Heart size={16} />
+                ) : (
+                  <Sparkles size={16} />
+                )}
               </span>
               <span className="text-sm font-medium text-ink">{nudge.message}</span>
             </span>
             {nudge.lessonId && (
-              <ArrowRight size={18} className="shrink-0 text-brand-600" />
+              <ArrowRight
+                size={18}
+                className={`shrink-0 ${
+                  nudge.mood === "thriving"
+                    ? "text-green-600"
+                    : nudge.mood === "struggling"
+                    ? "text-amber-600"
+                    : "text-brand-600"
+                }`}
+              />
             )}
           </button>
         )}
@@ -250,6 +327,34 @@ function StudentInner() {
             tone="brand"
           />
         </div>
+
+        {/* Personalized tools the tutor has unlocked for this student */}
+        {tools.length > 0 && (
+          <>
+            <h2 className="mt-9 text-sm font-bold uppercase tracking-wide text-ink-muted">
+              For you
+            </h2>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {tools.map((t) => {
+                const Icon = TOOL_ICONS[t.icon] || Sparkles;
+                return (
+                  <Card
+                    key={t.id}
+                    className="flex items-start gap-3 border-brand-100 bg-brand-50/40 p-4 animate-fadeUp"
+                  >
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
+                      <Icon size={18} />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-ink">{t.title}</p>
+                      <p className="mt-0.5 text-sm text-ink-muted">{t.description}</p>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         {/* lessons */}
         <h2 className="mt-9 text-sm font-bold uppercase tracking-wide text-ink-muted">

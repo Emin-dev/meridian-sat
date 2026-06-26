@@ -6,6 +6,8 @@ import { Logo, Button, Card, Input, Textarea, Select, Badge, Spinner, AIButton, 
 import LessonEditor from "@/components/LessonEditor";
 import AdminReview from "@/components/AdminReview";
 import AdminInsights from "@/components/AdminInsights";
+import AdminTools from "@/components/AdminTools";
+import AssistantBar from "@/components/AssistantBar";
 import type { Lesson, Student, Progress, Prompt } from "@/lib/supabase";
 import {
   Users,
@@ -15,6 +17,7 @@ import {
   LayoutTemplate,
   Inbox,
   LineChart,
+  Wand2,
   Plus,
   Pencil,
   Trash2,
@@ -27,6 +30,7 @@ import {
 type Tab =
   | "review"
   | "insights"
+  | "tools"
   | "students"
   | "lessons"
   | "generate"
@@ -41,6 +45,10 @@ export default function AdminPage() {
   const [authLoading, setAuthLoading] = useState(false);
   const [tab, setTab] = useState<Tab>("review");
   const [pendingCount, setPendingCount] = useState(0);
+  const [toolsPending, setToolsPending] = useState(0);
+  // When a suggestion or proposal targets a specific student, remember who so
+  // the destination tab can focus them.
+  const [focusStudent, setFocusStudent] = useState<string | null>(null);
 
   // data
   const [students, setStudents] = useState<Student[]>([]);
@@ -103,6 +111,10 @@ export default function AdminPage() {
       .then((r) => r.json())
       .then((d) => setPendingCount((d.requests || []).length))
       .catch(() => {});
+    fetch("/api/student-tools?status=pending")
+      .then((r) => r.json())
+      .then((d) => setToolsPending((d.tools || []).length))
+      .catch(() => {});
   }
 
   if (!authed) {
@@ -147,6 +159,7 @@ export default function AdminPage() {
   const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
     { id: "review", label: "Review", icon: <Inbox size={17} />, badge: pendingCount },
     { id: "insights", label: "Insights", icon: <LineChart size={17} /> },
+    { id: "tools", label: "Tools", icon: <Wand2 size={17} />, badge: toolsPending },
     { id: "students", label: "Students", icon: <Users size={17} /> },
     { id: "lessons", label: "Lessons", icon: <BookOpen size={17} /> },
     { id: "generate", label: "New lesson", icon: <Sparkles size={17} /> },
@@ -199,6 +212,9 @@ export default function AdminPage() {
           {tab === "insights" && (
             <AdminInsights students={students} reload={loadAll} />
           )}
+          {tab === "tools" && (
+            <AdminTools students={students} reload={loadAll} />
+          )}
           {tab === "students" && (
             <StudentsTab students={students} reload={loadAll} />
           )}
@@ -211,7 +227,12 @@ export default function AdminPage() {
             />
           )}
           {tab === "generate" && (
-            <GenerateTab students={students} reload={loadAll} setTab={setTab} />
+            <GenerateTab
+              students={students}
+              reload={loadAll}
+              setTab={setTab}
+              focusStudent={focusStudent}
+            />
           )}
           {tab === "analytics" && (
             <AnalyticsTab
@@ -241,6 +262,15 @@ export default function AdminPage() {
           }}
         />
       )}
+
+      {/* Quiet floating helper: anticipates the teacher's next move per tab. */}
+      <AssistantBar
+        tab={tab}
+        onGo={(target) => {
+          if (target.studentId) setFocusStudent(target.studentId);
+          if (target.tab) setTab(target.tab as Tab);
+        }}
+      />
     </main>
   );
 }
@@ -560,12 +590,19 @@ function GenerateTab({
   students,
   reload,
   setTab,
+  focusStudent,
 }: {
   students: Student[];
   reload: () => void;
   setTab: (t: Tab) => void;
+  focusStudent?: string | null;
 }) {
   const [studentId, setStudentId] = useState("");
+
+  // If the helper sent us here to build a specific student's lessons, focus them.
+  useEffect(() => {
+    if (focusStudent) setStudentId(focusStudent);
+  }, [focusStudent]);
   const [section, setSection] = useState("Math");
   const [topic, setTopic] = useState("");
   const [difficulty, setDifficulty] = useState("medium");
