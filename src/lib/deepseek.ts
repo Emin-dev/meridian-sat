@@ -28,6 +28,25 @@ export function fillTemplate(
   );
 }
 
+// Convenience: run a single chat completion and return the text content.
+export async function aiComplete(
+  system: string,
+  user: string,
+  opts: { json?: boolean; temperature?: number } = {}
+): Promise<string> {
+  const client = getDeepSeek();
+  const completion = await client.chat.completions.create({
+    model: DEEPSEEK_MODEL,
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    temperature: opts.temperature ?? 0.7,
+    ...(opts.json ? { response_format: { type: "json_object" as const } } : {}),
+  });
+  return completion.choices[0]?.message?.content || "";
+}
+
 // Extract a JSON object from a model response that may contain code fences.
 export function parseJsonFromModel(text: string): any {
   let cleaned = text.trim();

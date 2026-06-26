@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Logo, Button, Card, Badge, Spinner } from "@/components/ui";
 import Markdown from "@/components/Markdown";
+import Onboarding from "@/components/Onboarding";
 import type { Lesson, Student, Progress } from "@/lib/supabase";
 import {
   BookOpen,
@@ -13,6 +14,8 @@ import {
   ListChecks,
   GraduationCap,
   LogOut,
+  Sparkles,
+  CalendarCheck,
 } from "lucide-react";
 
 function StudentInner() {
@@ -25,6 +28,7 @@ function StudentInner() {
   const [progress, setProgress] = useState<Progress[]>([]);
   const [active, setActive] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showPlan, setShowPlan] = useState(false);
 
   async function load() {
     if (!studentId) {
@@ -61,6 +65,20 @@ function StudentInner() {
       <div className="flex min-h-screen items-center justify-center text-brand-600">
         <Spinner className="h-7 w-7" />
       </div>
+    );
+  }
+
+  // Unskippable first-login survey: if the student hasn't onboarded, they must
+  // complete it before seeing anything else.
+  if (student && !student.onboarded) {
+    return (
+      <Onboarding
+        student={student}
+        onDone={(updated) => {
+          setStudent(updated);
+          load();
+        }}
+      />
     );
   }
 
@@ -102,6 +120,39 @@ function StudentInner() {
             Here are your personalized lessons. Keep going — every question counts.
           </p>
         </div>
+
+        {/* AI-generated welcome summary */}
+        {student?.ai_summary && (
+          <Card className="mt-5 flex items-start gap-3 border-brand-100 bg-brand-50/60 p-4 animate-fadeUp">
+            <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
+              <Sparkles size={16} />
+            </div>
+            <p className="text-sm text-ink-soft">{student.ai_summary}</p>
+          </Card>
+        )}
+
+        {/* AI study plan (collapsible) */}
+        {student?.study_plan && (
+          <Card className="mt-3 p-4 animate-fadeUp">
+            <button
+              onClick={() => setShowPlan((v) => !v)}
+              className="flex w-full items-center justify-between text-left"
+            >
+              <span className="inline-flex items-center gap-2 font-semibold text-ink">
+                <CalendarCheck size={17} className="text-brand-600" />
+                Your personalized study plan
+              </span>
+              <span className="text-sm font-semibold text-brand-600">
+                {showPlan ? "Hide" : "View"}
+              </span>
+            </button>
+            {showPlan && (
+              <div className="mt-4 border-t border-line pt-4">
+                <Markdown>{student.study_plan}</Markdown>
+              </div>
+            )}
+          </Card>
+        )}
 
         <div className="mt-6 grid grid-cols-3 gap-3">
           <Stat icon={<BookOpen size={18} />} value={lessons.length} label="Lessons" />

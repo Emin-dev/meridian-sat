@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Button, Card, Input, Textarea, Select, Badge } from "@/components/ui";
+import { Button, Card, Input, Textarea, Select, Badge, AIButton } from "@/components/ui";
 import Markdown from "@/components/Markdown";
 import type { Lesson, Question } from "@/lib/supabase";
 import { Plus, Trash2, Eye, Save, X } from "lucide-react";
@@ -22,6 +22,17 @@ export default function LessonEditor({
 
   function set<K extends keyof Lesson>(key: K, val: Lesson[K]) {
     setDraft((d) => ({ ...d, [key]: val }));
+  }
+
+  // Run an AI text action on a piece of text and return the result.
+  async function aiText(text: string, action: string, context: string) {
+    const res = await fetch("/api/ai/improve", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, action, context }),
+    });
+    const d = await res.json();
+    return (d.text as string) || text;
   }
 
   function setQ(i: number, patch: Partial<Question>) {
@@ -163,7 +174,39 @@ export default function LessonEditor({
 
               {/* concept content */}
               <Card className="space-y-2 p-5">
-                <Field label="Concept explanation (Markdown + LaTeX)">
+                <Field
+                  label="Concept explanation (Markdown + LaTeX)"
+                  action={
+                    <div className="flex gap-1.5">
+                      <AIButton
+                        label="Improve"
+                        onRun={async () =>
+                          set(
+                            "content",
+                            await aiText(
+                              draft.content,
+                              "improve",
+                              `SAT ${draft.section} lesson on ${draft.topic}`
+                            )
+                          )
+                        }
+                      />
+                      <AIButton
+                        label="Expand"
+                        onRun={async () =>
+                          set(
+                            "content",
+                            await aiText(
+                              draft.content,
+                              "expand",
+                              `SAT ${draft.section} lesson on ${draft.topic}`
+                            )
+                          )
+                        }
+                      />
+                    </div>
+                  }
+                >
                   <Textarea
                     value={draft.content}
                     onChange={(v) => set("content", v)}
@@ -177,7 +220,24 @@ export default function LessonEditor({
 
               {/* study plan */}
               <Card className="p-5">
-                <Field label="Study plan (Markdown)">
+                <Field
+                  label="Study plan (Markdown)"
+                  action={
+                    <AIButton
+                      label="Improve"
+                      onRun={async () =>
+                        set(
+                          "study_plan",
+                          await aiText(
+                            draft.study_plan,
+                            "improve",
+                            `SAT study plan for ${draft.topic}`
+                          )
+                        )
+                      }
+                    />
+                  }
+                >
                   <Textarea
                     value={draft.study_plan}
                     onChange={(v) => set("study_plan", v)}
@@ -234,7 +294,23 @@ export default function LessonEditor({
                         />
                       </Field>
                     </div>
-                    <Field label="Explanation">
+                    <Field
+                      label="Explanation"
+                      action={
+                        <AIButton
+                          label="Improve"
+                          onRun={async () =>
+                            setQ(i, {
+                              explanation: await aiText(
+                                q.explanation,
+                                "improve",
+                                `explanation for an SAT ${draft.section} question`
+                              ),
+                            })
+                          }
+                        />
+                      }
+                    >
                       <Textarea
                         value={q.explanation}
                         onChange={(v) => setQ(i, { explanation: v })}
@@ -265,14 +341,17 @@ export default function LessonEditor({
 function Field({
   label,
   children,
+  action,
 }: {
   label: string;
   children: React.ReactNode;
+  action?: React.ReactNode;
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-ink-soft">
-        {label}
+      <span className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-ink-soft">{label}</span>
+        {action}
       </span>
       {children}
     </label>

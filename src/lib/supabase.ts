@@ -30,6 +30,10 @@ export type Student = {
   target_score: number;
   weak_areas: string[];
   notes: string;
+  onboarded: boolean;
+  survey: Record<string, any>;
+  study_plan: string;
+  ai_summary: string;
   created_at: string;
 };
 

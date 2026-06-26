@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useState } from "react";
 
 export function Logo({ className = "" }: { className?: string }) {
   return (
@@ -165,6 +165,67 @@ export function Badge({
     >
       {children}
     </span>
+  );
+}
+
+// Small sparkle icon used by all AI helper buttons.
+export function Sparkle({ className = "" }: { className?: string }) {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      className={className}
+      aria-hidden="true"
+    >
+      <path
+        d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"
+        fill="currentColor"
+      />
+      <path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z" fill="currentColor" opacity="0.7" />
+    </svg>
+  );
+}
+
+// Reusable "AI ✨" button. Calls the provided async action, shows a spinner,
+// and is used throughout the admin for invisible-by-default AI assistance.
+export function AIButton({
+  onRun,
+  label = "AI",
+  title,
+  className = "",
+  disabled,
+}: {
+  onRun: () => Promise<void>;
+  label?: string;
+  title?: string;
+  className?: string;
+  disabled?: boolean;
+}) {
+  const [loading, setLoading] = useState(false);
+  return (
+    <button
+      type="button"
+      title={title || "Generate with AI"}
+      disabled={loading || disabled}
+      onClick={async () => {
+        setLoading(true);
+        try {
+          await onRun();
+        } finally {
+          setLoading(false);
+        }
+      }}
+      className={`inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-100 disabled:opacity-50 disabled:cursor-not-allowed ${className}`}
+    >
+      {loading ? (
+        <Spinner className="text-brand-600" />
+      ) : (
+        <Sparkle className="text-brand-600" />
+      )}
+      {label}
+    </button>
   );
 }
 

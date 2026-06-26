@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo, Button, Card, Input, Textarea, Select, Badge, Spinner } from "@/components/ui";
+import { Logo, Button, Card, Input, Textarea, Select, Badge, Spinner, AIButton, Sparkle } from "@/components/ui";
 import LessonEditor from "@/components/LessonEditor";
 import type { Lesson, Student, Progress, Prompt } from "@/lib/supabase";
 import {
@@ -317,7 +317,24 @@ function StudentsTab({
                 onChange={(v) => setEditing({ ...editing, name: v })}
               />
             </Field>
-            <Field label="Access code (what the student types to log in)">
+            <Field
+              label="Access code (what the student types to log in)"
+              action={
+                <AIButton
+                  label="Suggest"
+                  title="Suggest an access code from the name"
+                  onRun={async () => {
+                    const res = await fetch("/api/ai/suggest-code", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ name: editing.name }),
+                    });
+                    const d = await res.json();
+                    if (d.code) setEditing({ ...editing, access_code: d.code });
+                  }}
+                />
+              }
+            >
               <Input
                 value={editing.access_code || ""}
                 onChange={(v) => setEditing({ ...editing, access_code: v.toUpperCase() })}
@@ -348,7 +365,47 @@ function StudentsTab({
                 onChange={(v) => setEditing({ ...editing, weak_areas: v as any })}
               />
             </Field>
-            <Field label="Private notes (admin only)">
+            <Field
+              label="Private notes (admin only)"
+              action={
+                <div className="flex gap-1.5">
+                  {editing.id && (
+                    <AIButton
+                      label="Auto-write"
+                      title="Auto-write a progress note from this student's lessons & scores"
+                      onRun={async () => {
+                        const res = await fetch("/api/ai/summarize", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ studentId: editing.id }),
+                        });
+                        const d = await res.json();
+                        if (d.summary) setEditing({ ...editing, notes: d.summary });
+                      }}
+                    />
+                  )}
+                  {(editing.notes || "").trim() && (
+                    <AIButton
+                      label="Improve"
+                      title="Polish this note with AI"
+                      onRun={async () => {
+                        const res = await fetch("/api/ai/improve", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            text: editing.notes,
+                            action: "improve",
+                            context: "private tutor note about an SAT student",
+                          }),
+                        });
+                        const d = await res.json();
+                        if (d.text) setEditing({ ...editing, notes: d.text });
+                      }}
+                    />
+                  )}
+                </div>
+              }
+            >
               <Textarea
                 value={editing.notes || ""}
                 onChange={(v) => setEditing({ ...editing, notes: v })}
@@ -463,6 +520,7 @@ function GenerateTab({
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [topicIdeas, setTopicIdeas] = useState<string[]>([]);
 
   async function generate() {
     setLoading(true);
@@ -531,12 +589,43 @@ function GenerateTab({
             />
           </Field>
         </div>
-        <Field label="Topic">
+        <Field
+          label="Topic"
+          action={
+            <AIButton
+              label="Suggest topics"
+              title="Suggest relevant SAT topics for this section & student"
+              onRun={async () => {
+                const res = await fetch("/api/ai/suggest-topics", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ studentId: studentId || undefined, section }),
+                });
+                const d = await res.json();
+                setTopicIdeas(d.topics || []);
+              }}
+            />
+          }
+        >
           <Input
             value={topic}
             onChange={setTopic}
             placeholder="e.g. Linear equations, Command of evidence…"
           />
+          {topicIdeas.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
+              {topicIdeas.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setTopic(t)}
+                  className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
+                >
+                  <Sparkle className="text-brand-500" /> {t}
+                </button>
+              ))}
+            </div>
+          )}
         </Field>
 
         {err && <p className="text-sm font-medium text-red-600">{err}</p>}
@@ -681,7 +770,28 @@ function PromptsTab({
           <Card key={p.id} className="p-5">
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-ink">{p.label}</h3>
-              <Badge tone="slate">{p.id}</Badge>
+              <div className="flex items-center gap-2">
+                <AIButton
+                  label="Improve"
+                  title="Refine this prompt with AI"
+                  onRun={async () => {
+                    const current = drafts[p.id] ?? p.content;
+                    const res = await fetch("/api/ai/improve", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        text: current,
+                        action: "improve",
+                        context:
+                          "a system/user prompt template for an SAT lesson generator; keep all {{placeholders}} intact",
+                      }),
+                    });
+                    const d = await res.json();
+                    if (d.text) setDrafts((dr) => ({ ...dr, [p.id]: d.text }));
+                  }}
+                />
+                <Badge tone="slate">{p.id}</Badge>
+              </div>
             </div>
             <Textarea
               value={drafts[p.id] ?? p.content}
@@ -712,10 +822,21 @@ function KPI({ label, value }: { label: string; value: number | string }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  action,
+}: {
+  label: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+}) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-ink-soft">{label}</span>
+      <span className="mb-1.5 flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-ink-soft">{label}</span>
+        {action}
+      </span>
       {children}
     </label>
   );

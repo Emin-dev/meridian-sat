@@ -9,16 +9,24 @@ export async function PATCH(
   try {
     const body = await req.json();
     const supabase = getSupabaseAdmin();
+    const update: Record<string, any> = {};
+    for (const k of [
+      "name",
+      "access_code",
+      "grade",
+      "target_score",
+      "weak_areas",
+      "notes",
+      "onboarded",
+      "survey",
+      "study_plan",
+      "ai_summary",
+    ]) {
+      if (k in body) update[k] = body[k];
+    }
     const { data, error } = await supabase
       .from("students")
-      .update({
-        name: body.name,
-        access_code: body.access_code,
-        grade: body.grade,
-        target_score: body.target_score,
-        weak_areas: body.weak_areas,
-        notes: body.notes,
-      })
+      .update(update)
       .eq("id", params.id)
       .select()
       .single();
