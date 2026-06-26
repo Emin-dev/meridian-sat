@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
+import { generateDraftPackage } from "@/lib/lessongen";
 
 export const maxDuration = 60;
 
 // POST /api/onboarding
-// body: { studentId, answers: { goal, timeline, confidence, strengths, weaknesses, hours, ... } }
-// AI turns the survey into a full profile: weak areas, notes, target score, study plan, summary.
+// body: { studentId, answers }
+//
+// New workflow: the student finishes the survey, we immediately move them into
+// the LOCKED "preparing" state and save their answers. In the background we ask
+// the model to build a full personalized package (study plan + first lessons)
+// and file it as a PENDING lesson_request for the teacher to review. Nothing is
+// published to the student until a teacher approves it.
 export async function POST(req: NextRequest) {
   try {
     const { studentId, answers } = await req.json();
@@ -27,45 +32,58 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Student not found." }, { status: 404 });
     }
 
-    const system =
-      "You are an expert SAT advisor. From a student's onboarding survey you build an accurate, encouraging study profile. Follow the official Digital SAT structure (Reading and Writing, Math; 200-800 each, 400-1600 total). Always return valid JSON only.";
-
-    const user = `Student name: ${student.name}. Grade: ${student.grade || "unknown"}.
-Here are their onboarding survey answers (JSON):
-${JSON.stringify(answers, null, 2)}
-
-Based on this, return STRICT JSON with this exact shape:
-{
-  "weak_areas": ["3-6 specific SAT topics this student should focus on, e.g. 'Linear equations', 'Command of evidence'"],
-  "target_score": 1400,  // a realistic but motivating total SAT target (400-1600) based on their goal and self-assessment
-  "notes": "2-4 sentence private note for the tutor summarizing this student's situation, goals, and what to watch for",
-  "ai_summary": "1-2 friendly sentences the student will see welcoming them and naming their focus areas",
-  "study_plan": "a personalized markdown study plan (use ## headings and bullet lists) spanning the student's available timeline, focused on their weak areas and weekly study hours"
-}`;
-
-    const raw = await aiComplete(system, user, { json: true, temperature: 0.6 });
-    const profile = parseJsonFromModel(raw);
-
-    const { data: updated, error: uErr } = await supabase
+    // 1) Lock the student: survey saved, status = preparing. They now wait.
+    const { data: locked, error: lockErr } = await supabase
       .from("students")
       .update({
         onboarded: true,
+        status: "preparing",
         survey: answers,
-        weak_areas: profile.weak_areas || student.weak_areas || [],
-        target_score: profile.target_score || student.target_score || 1400,
-        notes: profile.notes || student.notes || "",
-        ai_summary: profile.ai_summary || "",
-        study_plan: profile.study_plan || "",
       })
       .eq("id", studentId)
       .select()
       .single();
-
-    if (uErr) {
-      return NextResponse.json({ error: uErr.message }, { status: 500 });
+    if (lockErr) {
+      return NextResponse.json({ error: lockErr.message }, { status: 500 });
     }
 
-    return NextResponse.json({ student: updated });
+    // 2) Build the first draft package and file it for teacher review.
+    //    Done inline (within the function's 60s budget) so the request reliably
+    //    lands even on serverless; the student is already locked regardless.
+    try {
+      const pkg = await generateDraftPackage(student, answers, {
+        lessonCount: 4,
+      });
+      await supabase.from("lesson_requests").insert({
+        student_id: studentId,
+        status: "pending",
+        study_plan: pkg.study_plan,
+        ai_summary: pkg.ai_summary,
+        lessons: pkg.lessons,
+        notes: pkg.notes,
+        version: 1,
+        feedback: "",
+        discussion: [],
+      });
+      // Stash AI-derived profile on the student (private; not yet shown to them).
+      await supabase
+        .from("students")
+        .update({
+          weak_areas: pkg.weak_areas.length
+            ? pkg.weak_areas
+            : student.weak_areas || [],
+          target_score: pkg.target_score || student.target_score || 1400,
+          notes: pkg.notes || student.notes || "",
+        })
+        .eq("id", studentId);
+    } catch (genErr: any) {
+      // If generation fails, the student stays "preparing"; the teacher can
+      // trigger generation manually from the review screen. Don't fail the
+      // student's request — they've completed their part.
+      console.error("Draft generation failed:", genErr?.message);
+    }
+
+    return NextResponse.json({ student: locked });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Onboarding failed." },

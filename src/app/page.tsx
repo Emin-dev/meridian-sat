@@ -1,127 +1,120 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo, Button, Card, Input, Spinner } from "@/components/ui";
-import { GraduationCap, ShieldCheck, Sparkles, BookOpen, Target, ArrowRight } from "lucide-react";
+import { Logo, Card, Spinner } from "@/components/ui";
+import { ShieldCheck, ArrowRight } from "lucide-react";
 
+// Minimalist, ad-style landing page for MeridianSAT.
+// Single focus: a student enters their access code and is signed in
+// AUTOMATICALLY — no button to press. Less text, one clear action.
 export default function Home() {
   const router = useRouter();
   const [code, setCode] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<"idle" | "checking" | "error">("idle");
   const [error, setError] = useState("");
+  const lastTried = useRef("");
 
-  async function login() {
-    if (!code.trim()) return;
-    setLoading(true);
+  async function attempt(raw: string) {
+    const value = raw.trim();
+    // Only auto-try once a plausibly complete code is entered, and never retry
+    // the exact same failed value.
+    if (value.length < 4 || value === lastTried.current) return;
+    lastTried.current = value;
+    setStatus("checking");
     setError("");
     try {
       const res = await fetch("/api/student-auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code: value }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "Invalid code.");
+        setStatus("error");
+        setError(data.error || "We don't recognize that code yet.");
         return;
       }
-      // pass student id via URL (simple, no cookies/localStorage needed)
+      // Signed in — go straight to the student area.
       router.push(`/student?id=${data.student.id}`);
     } catch {
-      setError("Something went wrong. Try again.");
-    } finally {
-      setLoading(false);
+      setStatus("error");
+      setError("Something went wrong. Please try again.");
     }
   }
 
+  // Debounced auto-login as the student types.
+  useEffect(() => {
+    const value = code.trim();
+    if (value.length < 4) {
+      setStatus("idle");
+      return;
+    }
+    const t = setTimeout(() => attempt(value), 650);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [code]);
+
   return (
-    <main className="min-h-screen">
-      {/* top bar */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
+    <main className="relative flex min-h-screen flex-col overflow-hidden bg-paper">
+      {/* soft brand glow background */}
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl"
+      />
+
+      <header className="relative mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5">
         <Logo />
         <button
           onClick={() => router.push("/admin")}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted transition hover:text-ink"
         >
-          <ShieldCheck size={16} /> Admin
+          <ShieldCheck size={16} /> Tutor
         </button>
       </header>
 
-      <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-20 pt-6 md:grid-cols-2 md:gap-16 md:pt-16">
-        {/* left: pitch */}
-        <div className="animate-fadeUp">
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
-            <Sparkles size={14} /> Powered by DeepSeek V4 Pro
-          </span>
-          <h1 className="mt-5 font-display text-4xl font-extrabold leading-tight tracking-tight text-ink md:text-5xl">
-            Personalized SAT lessons,
-            <br />
-            built for <span className="text-brand-600">you</span>.
-          </h1>
-          <p className="mt-4 max-w-md text-base leading-relaxed text-ink-soft">
-            Custom lessons, real SAT-style practice questions, and a study plan
-            tuned to your goals and weak spots. Just enter the access code your
-            tutor gave you.
-          </p>
+      <div className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center px-5 pb-24 text-center">
+        <h1 className="font-display text-4xl font-extrabold leading-[1.1] tracking-tight text-ink md:text-5xl animate-fadeUp">
+          Your SAT,
+          <br />
+          made <span className="text-brand-600">just for you</span>.
+        </h1>
+        <p className="mt-4 max-w-sm text-base text-ink-soft animate-fadeUp">
+          Lessons built around your goals. Enter your code to begin.
+        </p>
 
-          <div className="mt-8 grid max-w-md grid-cols-3 gap-3">
-            <Feature icon={<BookOpen size={18} />} label="Concept lessons" />
-            <Feature icon={<Target size={18} />} label="Targeted practice" />
-            <Feature icon={<GraduationCap size={18} />} label="Study plans" />
+        <Card className="mt-9 w-full max-w-sm p-6 animate-fadeUp">
+          <div className="relative">
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => e.key === "Enter" && attempt(code)}
+              autoFocus
+              placeholder="ENTER YOUR CODE"
+              className="w-full rounded-xl border border-line bg-white px-4 py-4 text-center text-lg font-semibold uppercase tracking-[0.25em] text-ink outline-none transition focus:border-brand-400"
+            />
+            {status === "checking" && (
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-600">
+                <Spinner className="h-5 w-5" />
+              </span>
+            )}
+            {status === "idle" && code.trim().length >= 4 && (
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400">
+                <ArrowRight size={18} />
+              </span>
+            )}
           </div>
-        </div>
 
-        {/* right: login card */}
-        <div className="animate-fadeUp">
-          <Card className="p-7">
-            <h2 className="text-lg font-bold text-ink">Student sign in</h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              Enter your access code to start learning.
-            </p>
-            <div className="mt-5 space-y-3">
-              <Input
-                value={code}
-                onChange={setCode}
-                placeholder="e.g. EMMA2026"
-                className="text-center text-lg font-semibold tracking-widest uppercase"
-              />
-              {error && (
-                <p className="text-sm font-medium text-red-600">{error}</p>
-              )}
-              <Button
-                onClick={login}
-                disabled={loading || !code.trim()}
-                className="w-full"
-              >
-                {loading ? (
-                  <>
-                    <Spinner /> Signing in…
-                  </>
-                ) : (
-                  <>
-                    Start learning <ArrowRight size={16} />
-                  </>
-                )}
-              </Button>
-            </div>
-            <p className="mt-5 text-center text-xs text-ink-muted">
-              Don&apos;t have a code? Ask your tutor to create your account.
-            </p>
-          </Card>
-        </div>
+          {error && (
+            <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
+          )}
+          <p className="mt-4 text-xs text-ink-muted">
+            {status === "checking"
+              ? "Signing you in…"
+              : "You're signed in automatically — no password needed."}
+          </p>
+        </Card>
       </div>
     </main>
-  );
-}
-
-function Feature({ icon, label }: { icon: React.ReactNode; label: string }) {
-  return (
-    <div className="rounded-xl border border-line bg-white p-3 text-center shadow-card">
-      <div className="mx-auto flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600">
-        {icon}
-      </div>
-      <p className="mt-2 text-xs font-semibold text-ink-soft">{label}</p>
-    </div>
   );
 }

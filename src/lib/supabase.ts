@@ -31,9 +31,46 @@ export type Student = {
   weak_areas: string[];
   notes: string;
   onboarded: boolean;
+  // Lifecycle: 'new' | 'preparing' (locked, teacher building lessons) | 'active'
+  status: string;
   survey: Record<string, any>;
   study_plan: string;
   ai_summary: string;
+  created_at: string;
+  // Engagement & insight fields (maintained from the activity log)
+  labels: string[];
+  insights: Record<string, any>;
+  recommendations: Record<string, any>;
+  total_study_seconds: number;
+  last_active_at: string | null;
+  streak_days: number;
+  engagement_score: number;
+};
+
+// A draft lesson package awaiting teacher review before it reaches the student.
+export type LessonRequest = {
+  id: string;
+  student_id: string;
+  status: string; // 'pending' | 'approved' | 'denied'
+  study_plan: string;
+  ai_summary: string;
+  lessons: Omit<Lesson, "id" | "student_id" | "status" | "created_at">[];
+  notes: string;
+  version: number;
+  feedback: string;
+  discussion: { role: "teacher" | "assistant"; content: string }[];
+  created_at: string;
+  reviewed_at: string | null;
+};
+
+// A single logged activity event for a student.
+export type ActivityEvent = {
+  id: string;
+  student_id: string;
+  lesson_id: string | null;
+  type: string;
+  meta: Record<string, any>;
+  duration_ms: number;
   created_at: string;
 };
 

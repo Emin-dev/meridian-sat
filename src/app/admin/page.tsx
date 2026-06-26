@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Button, Card, Input, Textarea, Select, Badge, Spinner, AIButton, Sparkle } from "@/components/ui";
 import LessonEditor from "@/components/LessonEditor";
+import AdminReview from "@/components/AdminReview";
+import AdminInsights from "@/components/AdminInsights";
 import type { Lesson, Student, Progress, Prompt } from "@/lib/supabase";
 import {
   Users,
   BookOpen,
   Sparkles,
   BarChart3,
-  Bot,
+  LayoutTemplate,
+  Inbox,
+  LineChart,
   Plus,
   Pencil,
   Trash2,
@@ -20,7 +24,14 @@ import {
   Check,
 } from "lucide-react";
 
-type Tab = "students" | "lessons" | "generate" | "analytics" | "prompts";
+type Tab =
+  | "review"
+  | "insights"
+  | "students"
+  | "lessons"
+  | "generate"
+  | "analytics"
+  | "prompts";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -28,7 +39,8 @@ export default function AdminPage() {
   const [pw, setPw] = useState("");
   const [authErr, setAuthErr] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [tab, setTab] = useState<Tab>("students");
+  const [tab, setTab] = useState<Tab>("review");
+  const [pendingCount, setPendingCount] = useState(0);
 
   // data
   const [students, setStudents] = useState<Student[]>([]);
@@ -37,14 +49,19 @@ export default function AdminPage() {
   const [prompts, setPrompts] = useState<Prompt[]>([]);
   const [editing, setEditing] = useState<Lesson | null>(null);
 
-  async function login() {
+  const triedPw = useRef("");
+
+  async function login(value?: string) {
+    const pwd = (value ?? pw).trim();
+    if (!pwd || pwd === triedPw.current) return;
+    triedPw.current = pwd;
     setAuthLoading(true);
     setAuthErr("");
     try {
       const res = await fetch("/api/admin-auth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: pw }),
+        body: JSON.stringify({ password: pwd }),
       });
       if (res.ok) {
         setAuthed(true);
@@ -58,6 +75,18 @@ export default function AdminPage() {
     }
   }
 
+  // Auto sign-in: try as soon as a complete-looking password is typed.
+  useEffect(() => {
+    const v = pw.trim();
+    if (v.length < 4) {
+      triedPw.current = "";
+      return;
+    }
+    const t = setTimeout(() => login(v), 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pw]);
+
   async function loadAll() {
     const [s, l, p, pr] = await Promise.all([
       fetch("/api/students").then((r) => r.json()),
@@ -69,6 +98,11 @@ export default function AdminPage() {
     setLessons(l.lessons || []);
     setProgress(p.progress || []);
     setPrompts(pr.prompts || []);
+    // pending review count for the tab badge
+    fetch("/api/lesson-requests?status=pending")
+      .then((r) => r.json())
+      .then((d) => setPendingCount((d.requests || []).length))
+      .catch(() => {});
   }
 
   if (!authed) {
@@ -81,16 +115,23 @@ export default function AdminPage() {
             Enter your admin password to manage students and lessons.
           </p>
           <div className="mt-5 space-y-3">
-            <Input
-              type="password"
-              value={pw}
-              onChange={setPw}
-              placeholder="Admin password"
-            />
+            <div className="relative">
+              <Input
+                type="password"
+                value={pw}
+                onChange={setPw}
+                placeholder="Admin password"
+              />
+              {authLoading && (
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-600">
+                  <Spinner className="h-4 w-4" />
+                </span>
+              )}
+            </div>
             {authErr && <p className="text-sm font-medium text-red-600">{authErr}</p>}
-            <Button onClick={login} disabled={authLoading} className="w-full">
-              {authLoading ? <Spinner /> : <KeyRound size={16} />} Sign in
-            </Button>
+            <p className="text-center text-xs text-ink-muted">
+              {authLoading ? "Signing in…" : "You're signed in automatically."}
+            </p>
             <button
               onClick={() => router.push("/")}
               className="mx-auto block text-xs font-medium text-ink-muted hover:text-ink"
@@ -103,12 +144,14 @@ export default function AdminPage() {
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+    { id: "review", label: "Review", icon: <Inbox size={17} />, badge: pendingCount },
+    { id: "insights", label: "Insights", icon: <LineChart size={17} /> },
     { id: "students", label: "Students", icon: <Users size={17} /> },
     { id: "lessons", label: "Lessons", icon: <BookOpen size={17} /> },
-    { id: "generate", label: "Generate", icon: <Sparkles size={17} /> },
+    { id: "generate", label: "New lesson", icon: <Sparkles size={17} /> },
     { id: "analytics", label: "Analytics", icon: <BarChart3 size={17} /> },
-    { id: "prompts", label: "AI Prompts", icon: <Bot size={17} /> },
+    { id: "prompts", label: "Lesson style", icon: <LayoutTemplate size={17} /> },
   ];
 
   return (
@@ -142,11 +185,20 @@ export default function AdminPage() {
               }`}
             >
               {t.icon} {t.label}
+              {t.badge ? (
+                <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
+                  {t.badge}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
 
         <div className="mt-6">
+          {tab === "review" && <AdminReview reload={loadAll} />}
+          {tab === "insights" && (
+            <AdminInsights students={students} reload={loadAll} />
+          )}
           {tab === "students" && (
             <StudentsTab students={students} reload={loadAll} />
           )}
@@ -387,7 +439,7 @@ function StudentsTab({
                   {(editing.notes || "").trim() && (
                     <AIButton
                       label="Improve"
-                      title="Polish this note with AI"
+                      title="Polish this note"
                       onRun={async () => {
                         const res = await fetch("/api/ai/improve", {
                           method: "POST",
@@ -468,7 +520,7 @@ function LessonsTab({
 
       {shown.length === 0 ? (
         <Card className="mt-4 p-10 text-center text-ink-muted">
-          No lessons yet. Use the Generate tab to create AI lessons.
+          No lessons yet. Use the New lesson tab to create one.
         </Card>
       ) : (
         <div className="mt-4 space-y-2">
@@ -538,6 +590,8 @@ function GenerateTab({
         return;
       }
       setMsg(`Created “${d.lesson.title}”. Find it in the Lessons tab to review or edit.`);
+      // Reduce steps: jump straight to Lessons so the teacher can review it.
+      setTimeout(() => setTab("lessons"), 900);
       setTopic("");
       reload();
     } catch {
@@ -549,10 +603,10 @@ function GenerateTab({
 
   return (
     <div className="max-w-xl">
-      <h2 className="text-lg font-bold text-ink">Generate a lesson with AI</h2>
+      <h2 className="text-lg font-bold text-ink">Create a new lesson</h2>
       <p className="mt-1 text-sm text-ink-muted">
-        DeepSeek V4 Pro creates a personalized lesson, practice questions, and a
-        study plan. You can edit everything afterward.
+        Build a personalized lesson with practice questions and a study plan. You
+        can edit everything afterward.
       </p>
 
       <Card className="mt-4 space-y-4 p-6">
@@ -642,11 +696,11 @@ function GenerateTab({
         >
           {loading ? (
             <>
-              <Spinner /> Generating with DeepSeek…
+              <Spinner /> Creating lesson…
             </>
           ) : (
             <>
-              <Sparkles size={16} /> Generate lesson
+              <Sparkles size={16} /> Create lesson
             </>
           )}
         </Button>
@@ -757,9 +811,9 @@ function PromptsTab({
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-lg font-bold text-ink">AI prompts</h2>
+      <h2 className="text-lg font-bold text-ink">Lesson style</h2>
       <p className="mt-1 text-sm text-ink-muted">
-        Control exactly how the AI writes lessons. Use placeholders like{" "}
+        Control exactly how your lessons are written. Use placeholders like{" "}
         <code className="rounded bg-paper px-1">{"{{student_name}}"}</code>,{" "}
         <code className="rounded bg-paper px-1">{"{{topic}}"}</code>,{" "}
         <code className="rounded bg-paper px-1">{"{{weak_areas}}"}</code>.
@@ -773,7 +827,7 @@ function PromptsTab({
               <div className="flex items-center gap-2">
                 <AIButton
                   label="Improve"
-                  title="Refine this prompt with AI"
+                  title="Refine this style"
                   onRun={async () => {
                     const current = drafts[p.id] ?? p.content;
                     const res = await fetch("/api/ai/improve", {

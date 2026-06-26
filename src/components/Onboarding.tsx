@@ -6,8 +6,9 @@ import type { Student } from "@/lib/supabase";
 import { Sparkles, ChevronRight, ChevronLeft } from "lucide-react";
 
 // Unskippable first-login survey. The student MUST answer these before they can
-// reach the dashboard. Their answers are sent to /api/onboarding, where DeepSeek
-// builds their full profile (weak areas, target score, study plan, summary).
+// reach the dashboard. Their answers are sent to /api/onboarding, which moves
+// the student into the locked "preparing" state while their personalized lessons
+// are built and reviewed by their tutor.
 
 type Answers = {
   goal: string;
@@ -145,11 +146,11 @@ export default function Onboarding({
             <Sparkles size={26} className="animate-pulse" />
           </div>
           <h1 className="mt-5 font-display text-xl font-extrabold text-ink">
-            Building your study plan…
+            Sending your answers to your tutor…
           </h1>
           <p className="mt-2 max-w-sm text-sm text-ink-soft">
-            Our AI is reading your answers and creating a personalized plan and
-            lessons just for you. This takes a few seconds.
+            We&apos;re saving your answers so your tutor can prepare a study plan
+            and lessons made just for you. This only takes a moment.
           </p>
           <div className="mt-5 flex justify-center text-brand-600">
             <Spinner className="h-6 w-6" />
@@ -239,14 +240,14 @@ export default function Onboarding({
               <ChevronLeft size={16} /> Back
             </button>
             <Button onClick={next} disabled={!canContinue}>
-              {isLast ? "Finish & build my plan" : "Continue"}
+              {isLast ? "Finish & send to my tutor" : "Continue"}
               {isLast ? <Sparkles size={16} /> : <ChevronRight size={16} />}
             </Button>
           </div>
         </div>
 
         <p className="mt-8 text-center text-xs text-ink-muted">
-          Your answers personalize your lessons. Powered by DeepSeek V4 Pro.
+          Your answers help your tutor personalize your lessons.
         </p>
       </div>
     </main>

@@ -5,18 +5,33 @@ import { ReactNode, useState } from "react";
 export function Logo({ className = "" }: { className?: string }) {
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
-      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" aria-label="SAT Tutor logo">
-        <rect width="32" height="32" rx="8" fill="#1f4ced" />
+      <svg
+        width="28"
+        height="28"
+        viewBox="0 0 32 32"
+        fill="none"
+        aria-label="MeridianSAT logo"
+      >
+        <rect width="32" height="32" rx="9" fill="#1f4ced" />
+        {/* meridian: a rising arc crossed by a vertical line */}
         <path
-          d="M9 20.5L16 8l7 12.5"
+          d="M7 22a11 11 0 0 1 18 0"
           stroke="white"
-          strokeWidth="2.2"
+          strokeWidth="2.3"
           strokeLinecap="round"
-          strokeLinejoin="round"
         />
-        <path d="M12 17h8" stroke="white" strokeWidth="2.2" strokeLinecap="round" />
+        <path
+          d="M16 7v18"
+          stroke="white"
+          strokeWidth="2.3"
+          strokeLinecap="round"
+          opacity="0.9"
+        />
+        <circle cx="16" cy="22" r="2.1" fill="white" />
       </svg>
-      <span className="font-bold tracking-tight text-ink">SAT Tutor</span>
+      <span className="font-bold tracking-tight text-ink">
+        Meridian<span className="text-brand-600">SAT</span>
+      </span>
     </span>
   );
 }
@@ -207,7 +222,7 @@ export function AIButton({
   return (
     <button
       type="button"
-      title={title || "Generate with AI"}
+      title={title || "Suggest"}
       disabled={loading || disabled}
       onClick={async () => {
         setLoading(true);

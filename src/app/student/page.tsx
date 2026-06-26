@@ -1,10 +1,12 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Logo, Button, Card, Badge, Spinner } from "@/components/ui";
 import Markdown from "@/components/Markdown";
 import Onboarding from "@/components/Onboarding";
+import Preparing from "@/components/Preparing";
+import { createTracker, type Tracker } from "@/lib/track";
 import type { Lesson, Student, Progress } from "@/lib/supabase";
 import {
   BookOpen,
@@ -16,6 +18,7 @@ import {
   LogOut,
   Sparkles,
   CalendarCheck,
+  ArrowRight,
 } from "lucide-react";
 
 function StudentInner() {
@@ -29,6 +32,18 @@ function StudentInner() {
   const [active, setActive] = useState<Lesson | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPlan, setShowPlan] = useState(false);
+  const [nudge, setNudge] = useState<{ message: string; lessonId: string | null } | null>(null);
+  const nudgeFetched = useRef(false);
+
+  // Invisible activity tracker — one per student session.
+  const tracker = useMemo<Tracker | null>(
+    () => (studentId ? createTracker(studentId) : null),
+    [studentId]
+  );
+  const loggedLogin = useRef(false);
+  useEffect(() => {
+    return () => tracker?.dispose();
+  }, [tracker]);
 
   async function load() {
     if (!studentId) {
@@ -50,6 +65,27 @@ function StudentInner() {
     setLessons((lRes.lessons || []).filter((l: Lesson) => l.status === "published"));
     setProgress(pRes.progress || []);
     setLoading(false);
+
+    // Log a login event once the active student is loaded.
+    if (me.status === "active" && !loggedLogin.current) {
+      loggedLogin.current = true;
+      tracker?.track("login", { meta: { name: me.name } });
+    }
+
+    // Quietly fetch a personalized "what to do next" nudge once per session.
+    if (me.status === "active" && !nudgeFetched.current) {
+      nudgeFetched.current = true;
+      fetch("/api/ai/next-step", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          if (d && d.message) setNudge({ message: d.message, lessonId: d.lessonId ?? null });
+        })
+        .catch(() => {});
+    }
   }
 
   useEffect(() => {
@@ -82,11 +118,27 @@ function StudentInner() {
     );
   }
 
+  // Locked waiting state: survey done, but the teacher hasn't approved the
+  // personalized lessons yet. The student can do nothing but wait; this screen
+  // auto-unlocks when status flips to "active".
+  if (student && student.status === "preparing") {
+    return (
+      <Preparing
+        student={student}
+        onReady={(updated) => {
+          setStudent(updated);
+          load();
+        }}
+      />
+    );
+  }
+
   if (active) {
     return (
       <LessonView
         lesson={active}
         studentId={studentId}
+        tracker={tracker}
         existing={progFor(active.id)}
         onBack={() => {
           setActive(null);
@@ -121,7 +173,36 @@ function StudentInner() {
           </p>
         </div>
 
-        {/* AI-generated welcome summary */}
+        {/* Personalized next-step nudge (quiet, dismissible by acting on it) */}
+        {nudge && (
+          <button
+            onClick={() => {
+              const target = nudge.lessonId
+                ? lessons.find((l) => l.id === nudge.lessonId)
+                : null;
+              if (target) {
+                tracker?.track("lesson_open", {
+                  lessonId: target.id,
+                  meta: { title: target.title, section: target.section, via: "suggestion" },
+                });
+                setActive(target);
+              }
+            }}
+            className="mt-5 flex w-full items-center justify-between gap-3 rounded-xl border border-brand-200 bg-gradient-to-r from-brand-50 to-white p-4 text-left transition hover:border-brand-300 hover:shadow-pop animate-fadeUp"
+          >
+            <span className="flex items-center gap-3">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-600 text-white">
+                <Sparkles size={16} />
+              </span>
+              <span className="text-sm font-medium text-ink">{nudge.message}</span>
+            </span>
+            {nudge.lessonId && (
+              <ArrowRight size={18} className="shrink-0 text-brand-600" />
+            )}
+          </button>
+        )}
+
+        {/* Personalized welcome summary */}
         {student?.ai_summary && (
           <Card className="mt-5 flex items-start gap-3 border-brand-100 bg-brand-50/60 p-4 animate-fadeUp">
             <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-600">
@@ -131,7 +212,7 @@ function StudentInner() {
           </Card>
         )}
 
-        {/* AI study plan (collapsible) */}
+        {/* Personalized study plan (collapsible) */}
         {student?.study_plan && (
           <Card className="mt-3 p-4 animate-fadeUp">
             <button
@@ -193,7 +274,13 @@ function StudentInner() {
                   className="cursor-pointer p-5 transition hover:-translate-y-0.5 hover:shadow-pop"
                 >
                   <button
-                    onClick={() => setActive(l)}
+                    onClick={() => {
+                      tracker?.track("lesson_open", {
+                        lessonId: l.id,
+                        meta: { title: l.title, section: l.section },
+                      });
+                      setActive(l);
+                    }}
                     className="w-full text-left"
                   >
                     <div className="flex items-center gap-2">
@@ -255,11 +342,13 @@ function Stat({
 function LessonView({
   lesson,
   studentId,
+  tracker,
   existing,
   onBack,
 }: {
   lesson: Lesson;
   studentId: string;
+  tracker: Tracker | null;
   existing?: Progress;
   onBack: () => void;
 }) {
@@ -269,6 +358,27 @@ function LessonView({
   const [saving, setSaving] = useState(false);
 
   const questions = lesson.questions || [];
+
+  // Time-on-task: measure how long the student spends on each tab (reading the
+  // lesson, doing practice, viewing the plan). A timer restarts whenever the
+  // active tab changes and reports elapsed time for the previous tab.
+  const stopTimerRef = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    if (!tracker) return;
+    const type =
+      tab === "lesson"
+        ? "reading_tick"
+        : tab === "practice"
+          ? "practice_time"
+          : "plan_time";
+    const stop = tracker.startTimer(type, {
+      lessonId: lesson.id,
+      meta: { tab, title: lesson.title },
+    });
+    stopTimerRef.current = stop;
+    return () => stop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, lesson.id]);
 
   function letter(choice: string) {
     return choice.trim().charAt(0).toUpperCase();
@@ -283,6 +393,18 @@ function LessonView({
   async function submit() {
     setSubmitted(true);
     setSaving(true);
+    // Log each answer (correct/incorrect) and the final submission.
+    questions.forEach((q, i) => {
+      const correct = q.answer.trim().charAt(0).toUpperCase();
+      tracker?.track("practice_answer", {
+        lessonId: lesson.id,
+        meta: { q: i + 1, correct: answers[i] === correct },
+      });
+    });
+    tracker?.track("exam_submit", {
+      lessonId: lesson.id,
+      meta: { score, correctCount, total: questions.length },
+    });
     await fetch("/api/progress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

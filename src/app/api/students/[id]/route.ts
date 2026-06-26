@@ -18,9 +18,13 @@ export async function PATCH(
       "weak_areas",
       "notes",
       "onboarded",
+      "status",
       "survey",
       "study_plan",
       "ai_summary",
+      "labels",
+      "insights",
+      "recommendations",
     ]) {
       if (k in body) update[k] = body[k];
     }

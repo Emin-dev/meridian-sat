@@ -6,9 +6,9 @@ import "katex/dist/katex.min.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
-  title: "SAT Tutor — Personalized SAT Lessons",
+  title: "MeridianSAT — Your SAT, made just for you",
   description:
-    "AI-powered, personalized SAT lessons, practice questions, and study plans for every student.",
+    "Personalized SAT lessons, practice questions, and study plans built around each student's goals.",
 };
 
 export default function RootLayout({

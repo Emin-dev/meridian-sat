@@ -1,5 +1,5 @@
 -- ============================================================
---  SAT Tutor — Supabase database schema
+--  MeridianSAT — Supabase database schema
 --  Run this in your Supabase project: SQL Editor -> New query -> Run
 -- ============================================================
 
@@ -14,6 +14,21 @@ create table if not exists students (
   notes       text default '',            -- admin private notes
   created_at  timestamptz default now()
 );
+
+-- Student onboarding + lesson-approval workflow + engagement columns.
+-- status: 'new' (just created) | 'preparing' (locked, awaiting tutor approval) | 'active'
+alter table students add column if not exists onboarded          boolean default false;
+alter table students add column if not exists survey             jsonb default '{}'::jsonb;
+alter table students add column if not exists status             text default 'new';
+alter table students add column if not exists study_plan         text default '';
+alter table students add column if not exists ai_summary         text default '';
+alter table students add column if not exists labels             text[] default '{}';
+alter table students add column if not exists insights           jsonb default '{}'::jsonb;
+alter table students add column if not exists recommendations    jsonb default '[]'::jsonb;
+alter table students add column if not exists total_study_seconds integer default 0;
+alter table students add column if not exists last_active_at      timestamptz;
+alter table students add column if not exists streak_days         integer default 0;
+alter table students add column if not exists engagement_score    integer default 0;
 
 -- Lessons: AI-generated, fully editable by admin
 create table if not exists lessons (
@@ -56,6 +71,40 @@ create table if not exists settings (
   value text not null
 );
 
+-- Events: granular per-student activity log (time on lessons/practice/reading, etc.)
+create table if not exists events (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid references students(id) on delete cascade,
+  lesson_id   uuid references lessons(id) on delete set null,
+  type        text not null,              -- login | lesson_open | reading_tick | practice_time | practice_answer | exam_submit | plan_time ...
+  meta        jsonb default '{}'::jsonb,
+  duration_ms integer default 0,
+  created_at  timestamptz default now()
+);
+create index if not exists events_student_idx on events (student_id);
+create index if not exists events_type_idx    on events (type);
+create index if not exists events_created_idx  on events (created_at);
+
+-- Lesson requests: the approval queue. A student's first plan + lessons are filed
+-- here as a PENDING draft for the tutor to approve, refine, or send back.
+create table if not exists lesson_requests (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid references students(id) on delete cascade,
+  status      text not null default 'pending',  -- pending | approved | denied
+  study_plan  text default '',
+  ai_summary  text default '',
+  lessons     jsonb default '[]'::jsonb,         -- array of draft lessons
+  notes       text default '',
+  version     integer default 1,
+  feedback    text default '',
+  discussion  jsonb default '[]'::jsonb,         -- tutor <-> assistant refine chat
+  created_at  timestamptz default now(),
+  reviewed_at timestamptz
+);
+create index if not exists lesson_requests_student_idx on lesson_requests (student_id);
+create index if not exists lesson_requests_status_idx  on lesson_requests (status);
+create index if not exists lesson_requests_created_idx  on lesson_requests (created_at);
+
 -- ---------- Seed default AI prompts (admin can edit these in the UI) ----------
 insert into prompts (id, label, content) values
 (
@@ -95,6 +144,6 @@ Include 4 to 6 SAT-style practice questions. Make them realistic and aligned to 
 on conflict (id) do nothing;
 
 insert into settings (key, value) values
-  ('app_name', 'SAT Tutor'),
+  ('app_name', 'MeridianSAT'),
   ('welcome_message', 'Welcome back! Your personalized SAT lessons are ready.')
 on conflict (key) do nothing;
