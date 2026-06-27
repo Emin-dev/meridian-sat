@@ -11,6 +11,7 @@ import UsageMeter, { type RateStatus } from "@/components/UsageMeter";
 import type { Lesson, Student, Progress } from "@/lib/supabase";
 import { studentFetch, setStudentToken, getStudentToken } from "@/lib/studentClient";
 import StudentMedia from "@/components/StudentMedia";
+import { DecorMediaProvider, DecorMedia } from "@/components/DecorMedia";
 import {
   BookOpen,
   Target,
@@ -230,6 +231,16 @@ function StudentInner() {
   }
 
   return (
+    <DecorMediaProvider
+      role="student"
+      studentId={studentId}
+      authHeaders={() => {
+        const h: Record<string, string> = {};
+        const t = getStudentToken();
+        if (t) h["x-student-token"] = t;
+        return h;
+      }}
+    >
     <main className="min-h-screen">
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
@@ -249,6 +260,17 @@ function StudentInner() {
       </header>
 
       <div className="mx-auto max-w-5xl px-5 py-8">
+        {/* Decorative dashboard hero banner — student can hide it from their own
+            view (hover delete); restores via a low-opacity pill. */}
+        <DecorMedia
+          mediaKey="student-hero"
+          kind="image"
+          src="/decor/student-hero.webp"
+          alt=""
+          aspect="aspect-[16/5]"
+          className="mb-6 border border-line shadow-card animate-fadeUp"
+        />
+
         {/* greeting + stats */}
         <div className="animate-fadeUp">
           <h1 className="font-display text-2xl font-extrabold text-ink">
@@ -504,6 +526,7 @@ function StudentInner() {
         <StudentMedia studentId={studentId} />
       </div>
     </main>
+    </DecorMediaProvider>
   );
 }
 

@@ -21,7 +21,8 @@ import AdminInsights from "@/components/AdminInsights";
 import RichMedia from "@/components/RichMedia";
 import UsageMeter from "@/components/UsageMeter";
 import type { Lesson, Student } from "@/lib/supabase";
-import { adminFetch, restoreAdminSession } from "@/lib/adminClient";
+import { adminFetch, restoreAdminSession, getAdminToken } from "@/lib/adminClient";
+import { DecorMediaProvider, DecorMedia } from "@/components/DecorMedia";
 import {
   ArrowLeft,
   BookOpen,
@@ -110,7 +111,26 @@ export default function StudentDetailPage() {
     { id: "profile", label: "Profile & access", icon: <UserCog size={16} /> },
   ];
 
+  // Decorative header banner per tab (admin can hide app-wide via hover delete).
+  const TAB_DECOR: Record<Tab, { key: string; src: string; label: string }> = {
+    lessons: { key: "tab-lessons", src: "/decor/tab-lessons.webp", label: "Lessons & plan" },
+    tools: { key: "tab-ai-tools", src: "/decor/tab-ai-tools.webp", label: "AI tools" },
+    media: { key: "tab-rich-media", src: "/decor/tab-rich-media.webp", label: "Rich media" },
+    progress: { key: "tab-progress", src: "/decor/tab-progress.webp", label: "Progress" },
+    profile: { key: "tab-profile", src: "/decor/tab-profile.webp", label: "Profile & access" },
+  };
+  const decor = TAB_DECOR[tab];
+
   return (
+    <DecorMediaProvider
+      role="admin"
+      authHeaders={() => {
+        const t = getAdminToken();
+        const h: Record<string, string> = {};
+        if (t) h["x-admin-token"] = t;
+        return h;
+      }}
+    >
     <main className="min-h-screen">
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
@@ -160,6 +180,17 @@ export default function StudentDetailPage() {
           ))}
         </div>
 
+        {/* Decorative tab header banner (admin-only hover delete = app-wide hide) */}
+        <DecorMedia
+          mediaKey={decor.key}
+          kind="image"
+          src={decor.src}
+          alt={decor.label}
+          aspect="aspect-[16/4]"
+          label={decor.label}
+          className="mt-6 border border-line shadow-card"
+        />
+
         <div className="mt-6">
           {tab === "lessons" && (
             <LessonsAndPlan
@@ -198,6 +229,7 @@ export default function StudentDetailPage() {
         />
       )}
     </main>
+    </DecorMediaProvider>
   );
 }
 
