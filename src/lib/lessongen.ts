@@ -91,6 +91,46 @@ Generate exactly ${opts.lessonCount} lessons, each with 3-4 practice questions, 
   return parts.join("\n");
 }
 
+// Minimal, always-valid starter package used when AI generation is unavailable.
+// Guarantees the teacher always has a draft to approve so a first-login student
+// is never stuck in the "preparing" state with an empty review queue.
+export function fallbackPackage(student: any): DraftPackage {
+  const name = student?.name || "there";
+  return {
+    study_plan: `## Welcome, ${name}!\n\nHere is a starting study plan. Your teacher can refine this before it reaches you.\n\n- **Reading & Writing:** vocabulary in context, command of evidence, transitions\n- **Math:** linear equations, ratios & percentages, data analysis\n\n### Suggested weekly rhythm\n- 2 short Reading & Writing sessions\n- 2 short Math sessions\n- 1 mixed review`,
+    ai_summary: `Welcome ${name}! Here's a starter plan focused on the core SAT skills. Your teacher will tailor it to you.`,
+    notes:
+      "Auto-generated starter package (AI personalization was unavailable). Review and refine, then approve to unlock the student.",
+    weak_areas:
+      Array.isArray(student?.weak_areas) && student.weak_areas.length
+        ? student.weak_areas
+        : ["Words in context", "Linear equations", "Data analysis"],
+    target_score: student?.target_score || 1400,
+    lessons: [
+      {
+        title: "Words in Context",
+        section: "Reading and Writing",
+        topic: "Vocabulary in context",
+        difficulty: "Medium",
+        content:
+          "## Words in Context\n\nThe SAT often asks you to pick the word that best fits a sentence's meaning. Read the whole sentence, predict the meaning of the blank in your own words, then match it to the closest choice.\n\n**Strategy:** look for signal words (however, because, although) that tell you whether the missing word is positive, negative, or neutral.",
+        questions: [],
+        study_plan: "Start here to build core reading skills.",
+      },
+      {
+        title: "Linear Equations",
+        section: "Math",
+        topic: "Linear equations",
+        difficulty: "Medium",
+        content:
+          "## Linear Equations\n\nA linear equation graphs as a straight line: y = mx + b, where m is the slope and b is the y-intercept.\n\n**Strategy:** isolate the variable step by step, doing the same operation to both sides.",
+        questions: [],
+        study_plan: "Core math foundation for the rest of the plan.",
+      },
+    ],
+  };
+}
+
 export async function generateDraftPackage(
   student: Student,
   answers: Record<string, any>,

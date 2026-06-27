@@ -1,41 +1,28 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo, Button, Card, Input, Textarea, Select, Badge, Spinner, AIButton, Sparkle } from "@/components/ui";
-import LessonEditor from "@/components/LessonEditor";
-import AdminReview from "@/components/AdminReview";
-import AdminInsights from "@/components/AdminInsights";
-import AdminTools from "@/components/AdminTools";
-import AssistantBar from "@/components/AssistantBar";
-import type { Lesson, Student, Progress, Prompt } from "@/lib/supabase";
+import { Logo, Button, Card, Input, Textarea, Badge, Spinner, AIButton } from "@/components/ui";
+import UsageMeter from "@/components/UsageMeter";
+import type { Student, Prompt } from "@/lib/supabase";
 import {
   Users,
-  BookOpen,
-  Sparkles,
-  BarChart3,
-  LayoutTemplate,
-  Inbox,
-  LineChart,
-  Wand2,
-  Plus,
-  Pencil,
-  Trash2,
+  Settings as SettingsIcon,
   Home,
   KeyRound,
   Copy,
   Check,
+  Plus,
+  Search,
+  ChevronRight,
+  Inbox,
+  Wand2,
+  AlertTriangle,
+  Trash2,
+  Pencil,
 } from "lucide-react";
 
-type Tab =
-  | "review"
-  | "insights"
-  | "tools"
-  | "students"
-  | "lessons"
-  | "generate"
-  | "analytics"
-  | "prompts";
+type View = "students" | "settings";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -43,19 +30,13 @@ export default function AdminPage() {
   const [pw, setPw] = useState("");
   const [authErr, setAuthErr] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [tab, setTab] = useState<Tab>("review");
-  const [pendingCount, setPendingCount] = useState(0);
-  const [toolsPending, setToolsPending] = useState(0);
-  // When a suggestion or proposal targets a specific student, remember who so
-  // the destination tab can focus them.
-  const [focusStudent, setFocusStudent] = useState<string | null>(null);
+  const [view, setView] = useState<View>("students");
 
-  // data
   const [students, setStudents] = useState<Student[]>([]);
-  const [lessons, setLessons] = useState<Lesson[]>([]);
-  const [progress, setProgress] = useState<Progress[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
-  const [editing, setEditing] = useState<Lesson | null>(null);
+  const [loading, setLoading] = useState(true);
+  // per-student pending counts (review + tools) for the list badges
+  const [pending, setPending] = useState<Record<string, number>>({});
 
   const triedPw = useRef("");
 
@@ -83,7 +64,6 @@ export default function AdminPage() {
     }
   }
 
-  // Auto sign-in: try as soon as a complete-looking password is typed.
   useEffect(() => {
     const v = pw.trim();
     if (v.length < 4) {
@@ -96,25 +76,41 @@ export default function AdminPage() {
   }, [pw]);
 
   async function loadAll() {
-    const [s, l, p, pr] = await Promise.all([
+    setLoading(true);
+    const [s, pr] = await Promise.all([
       fetch("/api/students").then((r) => r.json()),
-      fetch("/api/lessons").then((r) => r.json()),
-      fetch("/api/progress").then((r) => r.json()),
       fetch("/api/prompts").then((r) => r.json()),
     ]);
-    setStudents(s.students || []);
-    setLessons(l.lessons || []);
-    setProgress(p.progress || []);
+    const studs: Student[] = s.students || [];
+    setStudents(studs);
     setPrompts(pr.prompts || []);
-    // pending review count for the tab badge
-    fetch("/api/lesson-requests?status=pending")
-      .then((r) => r.json())
-      .then((d) => setPendingCount((d.requests || []).length))
-      .catch(() => {});
-    fetch("/api/student-tools?status=pending")
-      .then((r) => r.json())
-      .then((d) => setToolsPending((d.tools || []).length))
-      .catch(() => {});
+    setLoading(false);
+
+    // Compute per-student "needs attention" counts: pending lesson requests +
+    // pending tool proposals + stuck students with no draft.
+    const counts: Record<string, number> = {};
+    try {
+      const [reqRes, toolRes] = await Promise.all([
+        fetch("/api/lesson-requests?status=pending").then((r) => r.json()),
+        fetch("/api/student-tools?status=pending").then((r) => r.json()),
+      ]);
+      const reqs = reqRes.requests || [];
+      const tools = toolRes.tools || [];
+      const pendingReqIds = new Set(reqs.map((r: any) => r.student_id));
+      for (const r of reqs) counts[r.student_id] = (counts[r.student_id] || 0) + 1;
+      for (const t of tools) counts[t.student_id] = (counts[t.student_id] || 0) + 1;
+      // stuck students
+      for (const st of studs) {
+        if (
+          st.onboarded &&
+          (st.status === "preparing" || st.status === "new") &&
+          !pendingReqIds.has(st.id)
+        ) {
+          counts[st.id] = (counts[st.id] || 0) + 1;
+        }
+      }
+    } catch {}
+    setPending(counts);
   }
 
   if (!authed) {
@@ -128,12 +124,7 @@ export default function AdminPage() {
           </p>
           <div className="mt-5 space-y-3">
             <div className="relative">
-              <Input
-                type="password"
-                value={pw}
-                onChange={setPw}
-                placeholder="Admin password"
-              />
+              <Input type="password" value={pw} onChange={setPw} placeholder="Admin password" />
               {authLoading && (
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-brand-600">
                   <Spinner className="h-4 w-4" />
@@ -156,682 +147,347 @@ export default function AdminPage() {
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
-    { id: "review", label: "Review", icon: <Inbox size={17} />, badge: pendingCount },
-    { id: "insights", label: "Insights", icon: <LineChart size={17} /> },
-    { id: "tools", label: "Tools", icon: <Wand2 size={17} />, badge: toolsPending },
-    { id: "students", label: "Students", icon: <Users size={17} /> },
-    { id: "lessons", label: "Lessons", icon: <BookOpen size={17} /> },
-    { id: "generate", label: "New lesson", icon: <Sparkles size={17} /> },
-    { id: "analytics", label: "Analytics", icon: <BarChart3 size={17} /> },
-    { id: "prompts", label: "Lesson style", icon: <LayoutTemplate size={17} /> },
-  ];
-
   return (
     <main className="min-h-screen">
       <header className="border-b border-line bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-4">
+        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
           <div className="flex items-center gap-3">
             <Logo />
             <Badge tone="brand">Admin</Badge>
           </div>
+          <div className="flex items-center gap-1 rounded-xl border border-line bg-white p-1">
+            <NavBtn active={view === "students"} onClick={() => setView("students")}>
+              <Users size={16} /> Students
+            </NavBtn>
+            <NavBtn active={view === "settings"} onClick={() => setView("settings")}>
+              <SettingsIcon size={16} /> Settings
+            </NavBtn>
+          </div>
           <button
             onClick={() => router.push("/")}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
+            className="hidden items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink sm:inline-flex"
           >
             <Home size={16} /> Exit
           </button>
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl px-5 py-6">
-        {/* tab nav */}
-        <div className="flex flex-wrap gap-1 rounded-xl border border-line bg-white p-1">
-          {tabs.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
-                tab === t.id
-                  ? "bg-brand-600 text-white"
-                  : "text-ink-soft hover:bg-paper"
-              }`}
-            >
-              {t.icon} {t.label}
-              {t.badge ? (
-                <span className="ml-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-amber-500 px-1.5 text-[11px] font-bold text-white">
-                  {t.badge}
-                </span>
-              ) : null}
-            </button>
-          ))}
-        </div>
-
-        <div className="mt-6">
-          {tab === "review" && <AdminReview reload={loadAll} />}
-          {tab === "insights" && (
-            <AdminInsights students={students} reload={loadAll} />
-          )}
-          {tab === "tools" && (
-            <AdminTools students={students} reload={loadAll} />
-          )}
-          {tab === "students" && (
-            <StudentsTab students={students} reload={loadAll} />
-          )}
-          {tab === "lessons" && (
-            <LessonsTab
-              lessons={lessons}
-              students={students}
-              onEdit={setEditing}
-              reload={loadAll}
-            />
-          )}
-          {tab === "generate" && (
-            <GenerateTab
-              students={students}
-              reload={loadAll}
-              setTab={setTab}
-              focusStudent={focusStudent}
-            />
-          )}
-          {tab === "analytics" && (
-            <AnalyticsTab
-              students={students}
-              lessons={lessons}
-              progress={progress}
-            />
-          )}
-          {tab === "prompts" && (
-            <PromptsTab prompts={prompts} reload={loadAll} />
-          )}
-        </div>
+      <div className="mx-auto max-w-5xl px-5 py-6">
+        {view === "students" && (
+          <StudentsList
+            students={students}
+            loading={loading}
+            pending={pending}
+            reload={loadAll}
+            onOpen={(id) => router.push(`/admin/student/${id}`)}
+          />
+        )}
+        {view === "settings" && <SettingsView prompts={prompts} reload={loadAll} />}
       </div>
-
-      {editing && (
-        <LessonEditor
-          lesson={editing}
-          onClose={() => setEditing(null)}
-          onSave={async (patch) => {
-            await fetch(`/api/lessons/${editing.id}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(patch),
-            });
-            setEditing(null);
-            loadAll();
-          }}
-        />
-      )}
-
-      {/* Quiet floating helper: anticipates the teacher's next move per tab. */}
-      <AssistantBar
-        tab={tab}
-        onGo={(target) => {
-          if (target.studentId) setFocusStudent(target.studentId);
-          if (target.tab) setTab(target.tab as Tab);
-        }}
-      />
     </main>
   );
 }
 
-/* ---------------- Students ---------------- */
-function StudentsTab({
-  students,
-  reload,
+function NavBtn({
+  active,
+  onClick,
+  children,
 }: {
-  students: Student[];
-  reload: () => void;
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
 }) {
-  const [editing, setEditing] = useState<Partial<Student> | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
-
-  function blank(): Partial<Student> {
-    return {
-      name: "",
-      access_code: "",
-      grade: "11th grade",
-      target_score: 1400,
-      weak_areas: [],
-      notes: "",
-    };
-  }
-
-  async function save() {
-    if (!editing) return;
-    const body = {
-      ...editing,
-      weak_areas:
-        typeof editing.weak_areas === "string"
-          ? (editing.weak_areas as string).split(",").map((s) => s.trim()).filter(Boolean)
-          : editing.weak_areas,
-    };
-    if (editing.id) {
-      await fetch(`/api/students/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    } else {
-      await fetch("/api/students", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-    }
-    setEditing(null);
-    reload();
-  }
-
-  async function remove(id: string) {
-    if (!confirm("Delete this student and all their lessons?")) return;
-    await fetch(`/api/students/${id}`, { method: "DELETE" });
-    reload();
-  }
-
   return (
-    <div>
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-bold text-ink">Students</h2>
-        <Button onClick={() => setEditing(blank())}>
-          <Plus size={16} /> New student
-        </Button>
-      </div>
-
-      {students.length === 0 ? (
-        <Card className="mt-4 p-10 text-center text-ink-muted">
-          No students yet. Create your first student to get started.
-        </Card>
-      ) : (
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {students.map((s) => (
-            <Card key={s.id} className="p-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <h3 className="font-bold text-ink">{s.name}</h3>
-                  <p className="text-xs text-ink-muted">{s.grade}</p>
-                </div>
-                <Badge tone="brand">Goal {s.target_score}</Badge>
-              </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(s.access_code);
-                  setCopied(s.id);
-                  setTimeout(() => setCopied(null), 1500);
-                }}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-paper px-2.5 py-1.5 text-sm font-semibold tracking-wide text-ink-soft hover:bg-brand-50"
-              >
-                <KeyRound size={14} /> {s.access_code}
-                {copied === s.id ? (
-                  <Check size={14} className="text-green-600" />
-                ) : (
-                  <Copy size={14} />
-                )}
-              </button>
-              {s.weak_areas?.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1">
-                  {s.weak_areas.map((w) => (
-                    <Badge key={w} tone="amber">
-                      {w}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-              <div className="mt-4 flex gap-2">
-                <Button variant="ghost" onClick={() => setEditing(s)}>
-                  <Pencil size={15} /> Edit
-                </Button>
-                <Button variant="danger" onClick={() => remove(s.id)}>
-                  <Trash2 size={15} />
-                </Button>
-              </div>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <Modal title={editing.id ? "Edit student" : "New student"} onClose={() => setEditing(null)}>
-          <div className="space-y-3">
-            <Field label="Name">
-              <Input
-                value={editing.name || ""}
-                onChange={(v) => setEditing({ ...editing, name: v })}
-              />
-            </Field>
-            <Field
-              label="Access code (what the student types to log in)"
-              action={
-                <AIButton
-                  label="Suggest"
-                  title="Suggest an access code from the name"
-                  onRun={async () => {
-                    const res = await fetch("/api/ai/suggest-code", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ name: editing.name }),
-                    });
-                    const d = await res.json();
-                    if (d.code) setEditing({ ...editing, access_code: d.code });
-                  }}
-                />
-              }
-            >
-              <Input
-                value={editing.access_code || ""}
-                onChange={(v) => setEditing({ ...editing, access_code: v.toUpperCase() })}
-              />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Grade">
-                <Input
-                  value={editing.grade || ""}
-                  onChange={(v) => setEditing({ ...editing, grade: v })}
-                />
-              </Field>
-              <Field label="Target score">
-                <Input
-                  type="number"
-                  value={editing.target_score ?? 1400}
-                  onChange={(v) => setEditing({ ...editing, target_score: Number(v) })}
-                />
-              </Field>
-            </div>
-            <Field label="Weak areas (comma-separated)">
-              <Input
-                value={
-                  Array.isArray(editing.weak_areas)
-                    ? editing.weak_areas.join(", ")
-                    : (editing.weak_areas as any) || ""
-                }
-                onChange={(v) => setEditing({ ...editing, weak_areas: v as any })}
-              />
-            </Field>
-            <Field
-              label="Private notes (admin only)"
-              action={
-                <div className="flex gap-1.5">
-                  {editing.id && (
-                    <AIButton
-                      label="Auto-write"
-                      title="Auto-write a progress note from this student's lessons & scores"
-                      onRun={async () => {
-                        const res = await fetch("/api/ai/summarize", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ studentId: editing.id }),
-                        });
-                        const d = await res.json();
-                        if (d.summary) setEditing({ ...editing, notes: d.summary });
-                      }}
-                    />
-                  )}
-                  {(editing.notes || "").trim() && (
-                    <AIButton
-                      label="Improve"
-                      title="Polish this note"
-                      onRun={async () => {
-                        const res = await fetch("/api/ai/improve", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({
-                            text: editing.notes,
-                            action: "improve",
-                            context: "private tutor note about an SAT student",
-                          }),
-                        });
-                        const d = await res.json();
-                        if (d.text) setEditing({ ...editing, notes: d.text });
-                      }}
-                    />
-                  )}
-                </div>
-              }
-            >
-              <Textarea
-                value={editing.notes || ""}
-                onChange={(v) => setEditing({ ...editing, notes: v })}
-                rows={3}
-              />
-            </Field>
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="ghost" onClick={() => setEditing(null)}>
-                Cancel
-              </Button>
-              <Button onClick={save} disabled={!editing.name || !editing.access_code}>
-                Save
-              </Button>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
+    <button
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-semibold transition ${
+        active ? "bg-brand-600 text-white" : "text-ink-soft hover:bg-paper"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
-/* ---------------- Lessons ---------------- */
-function LessonsTab({
-  lessons,
-  students,
-  onEdit,
-  reload,
-}: {
-  lessons: Lesson[];
-  students: Student[];
-  onEdit: (l: Lesson) => void;
-  reload: () => void;
-}) {
-  const [filter, setFilter] = useState("all");
-  const name = (id: string) => students.find((s) => s.id === id)?.name || "—";
-  const shown =
-    filter === "all" ? lessons : lessons.filter((l) => l.student_id === filter);
+/* ============================ Students list (home) ============================ */
 
-  async function remove(id: string) {
-    if (!confirm("Delete this lesson?")) return;
-    await fetch(`/api/lessons/${id}`, { method: "DELETE" });
-    reload();
-  }
+function StudentsList({
+  students,
+  loading,
+  pending,
+  reload,
+  onOpen,
+}: {
+  students: Student[];
+  loading: boolean;
+  pending: Record<string, number>;
+  reload: () => void;
+  onOpen: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  const [creating, setCreating] = useState(false);
+
+  const filtered = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    const list = t
+      ? students.filter(
+          (s) =>
+            s.name.toLowerCase().includes(t) ||
+            s.access_code.toLowerCase().includes(t)
+        )
+      : students;
+    // Sort: students needing attention first, then by name.
+    return [...list].sort((a, b) => {
+      const pa = pending[a.id] || 0;
+      const pb = pending[b.id] || 0;
+      if (pa !== pb) return pb - pa;
+      return a.name.localeCompare(b.name);
+    });
+  }, [students, q, pending]);
+
+  const needsAttention = Object.values(pending).filter(Boolean).length;
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-ink">All lessons</h2>
-        <div className="w-56">
-          <Select
-            value={filter}
-            onChange={setFilter}
-            options={[
-              { value: "all", label: "All students" },
-              ...students.map((s) => ({ value: s.id, label: s.name })),
-            ]}
+        <div>
+          <h1 className="text-xl font-bold text-ink">Students</h1>
+          <p className="mt-0.5 text-sm text-ink-muted">
+            {students.length} student{students.length === 1 ? "" : "s"}
+            {needsAttention > 0 && (
+              <>
+                {" · "}
+                <span className="font-semibold text-amber-600">
+                  {needsAttention} need attention
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+        <Button onClick={() => setCreating(true)}>
+          <Plus size={16} /> New student
+        </Button>
+      </div>
+
+      <div className="mt-4">
+        <div className="relative max-w-sm">
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
+          />
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by name or access code…"
+            className="w-full rounded-xl border border-line bg-white py-2.5 pl-9 pr-3 text-sm text-ink outline-none transition focus:border-brand-400"
           />
         </div>
       </div>
 
-      {shown.length === 0 ? (
+      {loading ? (
+        <div className="mt-6 flex items-center gap-2 text-sm text-ink-muted">
+          <Spinner className="h-4 w-4" /> Loading students…
+        </div>
+      ) : filtered.length === 0 ? (
         <Card className="mt-4 p-10 text-center text-ink-muted">
-          No lessons yet. Use the New lesson tab to create one.
+          {students.length === 0
+            ? "No students yet. Create your first student to get started."
+            : "No students match your search."}
         </Card>
       ) : (
         <div className="mt-4 space-y-2">
-          {shown.map((l) => (
-            <Card key={l.id} className="flex items-center justify-between p-4">
-              <div className="min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={l.section === "Math" ? "brand" : "amber"}>
-                    {l.section}
-                  </Badge>
-                  <Badge tone="slate">{l.difficulty}</Badge>
-                  {l.status === "draft" && <Badge tone="amber">Draft</Badge>}
-                </div>
-                <h3 className="mt-1.5 truncate font-semibold text-ink">{l.title}</h3>
-                <p className="text-xs text-ink-muted">
-                  {name(l.student_id)} · {l.questions?.length || 0} questions
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button variant="soft" onClick={() => onEdit(l)}>
-                  <Pencil size={15} /> Edit
-                </Button>
-                <Button variant="danger" onClick={() => remove(l.id)}>
-                  <Trash2 size={15} />
-                </Button>
-              </div>
-            </Card>
+          {filtered.map((s) => (
+            <StudentRow
+              key={s.id}
+              student={s}
+              pending={pending[s.id] || 0}
+              onOpen={() => onOpen(s.id)}
+            />
           ))}
         </div>
+      )}
+
+      {creating && (
+        <StudentCreateModal
+          onClose={() => setCreating(false)}
+          onSaved={(id) => {
+            setCreating(false);
+            reload();
+            onOpen(id);
+          }}
+        />
       )}
     </div>
   );
 }
 
-/* ---------------- Generate ---------------- */
-function GenerateTab({
-  students,
-  reload,
-  setTab,
-  focusStudent,
+function StudentRow({
+  student,
+  pending,
+  onOpen,
 }: {
-  students: Student[];
-  reload: () => void;
-  setTab: (t: Tab) => void;
-  focusStudent?: string | null;
+  student: Student;
+  pending: number;
+  onOpen: () => void;
 }) {
-  const [studentId, setStudentId] = useState("");
+  const [copied, setCopied] = useState(false);
+  const atRisk = (student.engagement_score || 0) < 35 && student.onboarded;
 
-  // If the helper sent us here to build a specific student's lessons, focus them.
-  useEffect(() => {
-    if (focusStudent) setStudentId(focusStudent);
-  }, [focusStudent]);
-  const [section, setSection] = useState("Math");
-  const [topic, setTopic] = useState("");
-  const [difficulty, setDifficulty] = useState("medium");
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [err, setErr] = useState("");
-  const [topicIdeas, setTopicIdeas] = useState<string[]>([]);
+  return (
+    <Card className="flex items-center gap-4 p-4 transition hover:border-brand-300">
+      <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-4 text-left">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">
+          {student.name.slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="truncate font-bold text-ink">{student.name}</h3>
+            {pending > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                <Inbox size={11} /> {pending} to review
+              </span>
+            )}
+            {atRisk && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-bold text-red-600">
+                <AlertTriangle size={11} /> At risk
+              </span>
+            )}
+            {student.status === "preparing" && (
+              <Badge tone="amber">Preparing</Badge>
+            )}
+          </div>
+          <p className="truncate text-xs text-ink-muted">
+            {student.grade || "—"} · Goal {student.target_score}
+          </p>
+        </div>
+      </button>
 
-  async function generate() {
-    setLoading(true);
-    setMsg("");
-    setErr("");
+      <button
+        onClick={() => {
+          navigator.clipboard?.writeText(student.access_code);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="hidden items-center gap-1.5 rounded-lg bg-paper px-2.5 py-1.5 text-xs font-semibold text-ink-soft hover:bg-brand-50 sm:inline-flex"
+        title="Copy access code"
+      >
+        <KeyRound size={13} /> {student.access_code}
+        {copied ? <Check size={13} className="text-green-600" /> : <Copy size={13} />}
+      </button>
+
+      <div className="w-28 shrink-0">
+        <UsageMeter studentId={student.id} compact />
+      </div>
+
+      <button onClick={onOpen} className="shrink-0 text-ink-muted hover:text-brand-600">
+        <ChevronRight size={20} />
+      </button>
+    </Card>
+  );
+}
+
+function StudentCreateModal({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (id: string) => void;
+}) {
+  const [form, setForm] = useState({
+    name: "",
+    access_code: "",
+    grade: "11th grade",
+    target_score: 1400,
+    weak_areas: "",
+    notes: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
     try {
-      const res = await fetch("/api/generate-lesson", {
+      const res = await fetch("/api/students", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ studentId, section, topic, difficulty }),
+        body: JSON.stringify({
+          ...form,
+          weak_areas: form.weak_areas
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        }),
       });
       const d = await res.json();
-      if (!res.ok) {
-        setErr(d.error || "Generation failed.");
-        return;
-      }
-      setMsg(`Created “${d.lesson.title}”. Find it in the Lessons tab to review or edit.`);
-      // Reduce steps: jump straight to Lessons so the teacher can review it.
-      setTimeout(() => setTab("lessons"), 900);
-      setTopic("");
-      reload();
-    } catch {
-      setErr("Something went wrong.");
+      if (d.student?.id) onSaved(d.student.id);
+      else onClose();
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
   return (
-    <div className="max-w-xl">
-      <h2 className="text-lg font-bold text-ink">Create a new lesson</h2>
-      <p className="mt-1 text-sm text-ink-muted">
-        Build a personalized lesson with practice questions and a study plan. You
-        can edit everything afterward.
-      </p>
-
-      <Card className="mt-4 space-y-4 p-6">
-        <Field label="Student">
-          <Select
-            value={studentId}
-            onChange={setStudentId}
-            options={[
-              { value: "", label: "Select a student…" },
-              ...students.map((s) => ({ value: s.id, label: s.name })),
-            ]}
-          />
+    <Modal title="New student" onClose={onClose}>
+      <div className="space-y-3">
+        <Field label="Name">
+          <Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
         </Field>
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Section">
-            <Select
-              value={section}
-              onChange={setSection}
-              options={[
-                { value: "Math", label: "Math" },
-                { value: "Reading and Writing", label: "Reading and Writing" },
-              ]}
-            />
-          </Field>
-          <Field label="Difficulty">
-            <Select
-              value={difficulty}
-              onChange={setDifficulty}
-              options={[
-                { value: "easy", label: "Easy" },
-                { value: "medium", label: "Medium" },
-                { value: "hard", label: "Hard" },
-              ]}
-            />
-          </Field>
-        </div>
         <Field
-          label="Topic"
+          label="Access code (what the student types to log in)"
           action={
             <AIButton
-              label="Suggest topics"
-              title="Suggest relevant SAT topics for this section & student"
+              label="Suggest"
+              title="Suggest an access code from the name"
               onRun={async () => {
-                const res = await fetch("/api/ai/suggest-topics", {
+                const res = await fetch("/api/ai/suggest-code", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ studentId: studentId || undefined, section }),
+                  body: JSON.stringify({ name: form.name }),
                 });
                 const d = await res.json();
-                setTopicIdeas(d.topics || []);
+                if (d.code) setForm((f) => ({ ...f, access_code: d.code }));
               }}
             />
           }
         >
           <Input
-            value={topic}
-            onChange={setTopic}
-            placeholder="e.g. Linear equations, Command of evidence…"
+            value={form.access_code}
+            onChange={(v) => setForm({ ...form, access_code: v.toUpperCase() })}
           />
-          {topicIdeas.length > 0 && (
-            <div className="mt-2.5 flex flex-wrap gap-1.5">
-              {topicIdeas.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setTopic(t)}
-                  className="inline-flex items-center gap-1 rounded-full border border-brand-200 bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
-                >
-                  <Sparkle className="text-brand-500" /> {t}
-                </button>
-              ))}
-            </div>
-          )}
         </Field>
-
-        {err && <p className="text-sm font-medium text-red-600">{err}</p>}
-        {msg && (
-          <p className="rounded-xl bg-green-50 px-3 py-2 text-sm font-medium text-green-700">
-            {msg}
-          </p>
-        )}
-
-        <Button
-          onClick={generate}
-          disabled={loading || !studentId || !topic.trim()}
-          className="w-full"
-        >
-          {loading ? (
-            <>
-              <Spinner /> Creating lesson…
-            </>
-          ) : (
-            <>
-              <Sparkles size={16} /> Create lesson
-            </>
-          )}
-        </Button>
-        {loading && (
-          <p className="text-center text-xs text-ink-muted">
-            This can take 15–40 seconds. Please wait.
-          </p>
-        )}
-      </Card>
-    </div>
-  );
-}
-
-/* ---------------- Analytics ---------------- */
-function AnalyticsTab({
-  students,
-  lessons,
-  progress,
-}: {
-  students: Student[];
-  lessons: Lesson[];
-  progress: Progress[];
-}) {
-  return (
-    <div>
-      <h2 className="text-lg font-bold text-ink">Progress & analytics</h2>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KPI label="Students" value={students.length} />
-        <KPI label="Lessons" value={lessons.length} />
-        <KPI label="Completions" value={progress.filter((p) => p.completed).length} />
-        <KPI
-          label="Avg score"
-          value={
-            progress.filter((p) => p.score != null).length
-              ? Math.round(
-                  progress.reduce((a, p) => a + (p.score || 0), 0) /
-                    progress.filter((p) => p.score != null).length
-                ) + "%"
-              : "—"
-          }
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Grade">
+            <Input value={form.grade} onChange={(v) => setForm({ ...form, grade: v })} />
+          </Field>
+          <Field label="Target score">
+            <Input
+              type="number"
+              value={form.target_score}
+              onChange={(v) => setForm({ ...form, target_score: Number(v) })}
+            />
+          </Field>
+        </div>
+        <Field label="Weak areas (comma-separated)">
+          <Input
+            value={form.weak_areas}
+            onChange={(v) => setForm({ ...form, weak_areas: v })}
+          />
+        </Field>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving || !form.name || !form.access_code}>
+            {saving ? <Spinner /> : null} Create & open
+          </Button>
+        </div>
       </div>
-
-      <Card className="mt-5 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-paper text-left text-xs font-semibold uppercase tracking-wide text-ink-muted">
-            <tr>
-              <th className="px-4 py-3">Student</th>
-              <th className="px-4 py-3">Lessons done</th>
-              <th className="px-4 py-3">Avg score</th>
-              <th className="px-4 py-3">Target</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-line">
-            {students.map((s) => {
-              const mine = progress.filter((p) => p.student_id === s.id);
-              const done = mine.filter((p) => p.completed).length;
-              const scored = mine.filter((p) => p.score != null);
-              const avg = scored.length
-                ? Math.round(
-                    scored.reduce((a, p) => a + (p.score || 0), 0) / scored.length
-                  )
-                : null;
-              return (
-                <tr key={s.id} className="text-ink-soft">
-                  <td className="px-4 py-3 font-semibold text-ink">{s.name}</td>
-                  <td className="px-4 py-3">{done}</td>
-                  <td className="px-4 py-3">{avg != null ? `${avg}%` : "—"}</td>
-                  <td className="px-4 py-3">{s.target_score}</td>
-                </tr>
-              );
-            })}
-            {students.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-ink-muted">
-                  No data yet.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
-    </div>
+    </Modal>
   );
 }
 
-/* ---------------- Prompts ---------------- */
-function PromptsTab({
-  prompts,
-  reload,
-}: {
-  prompts: Prompt[];
-  reload: () => void;
-}) {
+/* ============================ Settings ============================ */
+
+function SettingsView({ prompts, reload }: { prompts: Prompt[]; reload: () => void }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<string | null>(null);
 
@@ -848,9 +504,14 @@ function PromptsTab({
 
   return (
     <div className="max-w-3xl">
-      <h2 className="text-lg font-bold text-ink">Lesson style</h2>
+      <h1 className="text-xl font-bold text-ink">Settings</h1>
+      <p className="mt-0.5 text-sm text-ink-muted">
+        Control how lessons are written across all students.
+      </p>
+
+      <h2 className="mt-6 text-sm font-bold text-ink">Lesson style</h2>
       <p className="mt-1 text-sm text-ink-muted">
-        Control exactly how your lessons are written. Use placeholders like{" "}
+        Use placeholders like{" "}
         <code className="rounded bg-paper px-1">{"{{student_name}}"}</code>,{" "}
         <code className="rounded bg-paper px-1">{"{{topic}}"}</code>,{" "}
         <code className="rounded bg-paper px-1">{"{{weak_areas}}"}</code>.
@@ -898,20 +559,17 @@ function PromptsTab({
             </div>
           </Card>
         ))}
+        {prompts.length === 0 && (
+          <Card className="p-8 text-center text-sm text-ink-muted">
+            No lesson-style prompts configured.
+          </Card>
+        )}
       </div>
     </div>
   );
 }
 
-/* ---------------- shared bits ---------------- */
-function KPI({ label, value }: { label: string; value: number | string }) {
-  return (
-    <Card className="p-4">
-      <p className="text-2xl font-extrabold text-ink">{value}</p>
-      <p className="text-xs font-medium text-ink-muted">{label}</p>
-    </Card>
-  );
-}
+/* ============================ shared bits ============================ */
 
 function Field({
   label,

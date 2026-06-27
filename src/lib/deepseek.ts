@@ -32,9 +32,16 @@ export function fillTemplate(
 export async function aiComplete(
   system: string,
   user: string,
-  opts: { json?: boolean; temperature?: number } = {}
+  opts: { json?: boolean; temperature?: number; maxTokens?: number } = {}
 ): Promise<string> {
   const client = getDeepSeek();
+  // IMPORTANT: deepseek-v4-pro is a reasoning model. It spends completion tokens
+  // on hidden reasoning BEFORE producing the visible answer. If max_tokens is
+  // too low (or unset and defaulting low), reasoning consumes the whole budget
+  // and `content` comes back EMPTY with finish_reason "length". We therefore set
+  // a generous default so there is always room for the real answer after the
+  // model finishes reasoning. This was the root cause of lesson generation
+  // silently returning empty packages.
   const completion = await client.chat.completions.create({
     model: DEEPSEEK_MODEL,
     messages: [
@@ -42,6 +49,7 @@ export async function aiComplete(
       { role: "user", content: user },
     ],
     temperature: opts.temperature ?? 0.7,
+    max_tokens: opts.maxTokens ?? 8000,
     ...(opts.json ? { response_format: { type: "json_object" as const } } : {}),
   });
   return completion.choices[0]?.message?.content || "";

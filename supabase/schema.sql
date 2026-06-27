@@ -129,6 +129,46 @@ create unique index if not exists student_tools_student_key_idx on student_tools
 create index if not exists student_tools_student_idx on student_tools (student_id);
 create index if not exists student_tools_status_idx  on student_tools (status);
 
+-- ---------- Per-student daily AI usage / rate limiting ----------
+-- One row per (student, UTC day). The school runs an unlimited DeepSeek plan, so
+-- this exists for fairness + abuse protection, not cost control. The app applies
+-- a tiered ramp in src/lib/ratelimit.ts: warn at 90, throttle at 100 (spaced 4
+-- min apart), hard block at 200 until a teacher grants more or 12h pass. Admins
+-- raise every threshold for a student/day by adding to `bonus`.
+create table if not exists ai_usage (
+  id              uuid primary key default gen_random_uuid(),
+  student_id      uuid references students(id) on delete cascade,
+  day             date not null,                 -- UTC date the counter belongs to
+  count           integer not null default 0,    -- AI requests used so far this day
+  bonus           integer not null default 0,    -- admin-granted extra allowance
+  last_request_at timestamptz,                    -- powers throttle spacing
+  blocked_until   timestamptz,                    -- set when hard ceiling is hit
+  created_at      timestamptz default now()
+);
+create unique index if not exists ai_usage_student_day_idx on ai_usage (student_id, day);
+create index if not exists ai_usage_student_idx on ai_usage (student_id);
+
+-- ---------- Rich media assets (NotebookLM-style studio) ----------
+-- Images/diagrams, podcast audio overviews, narrated video overviews, and
+-- curated YouTube picks generated per student (optionally attached to a lesson).
+-- Files for generated kinds live in the public Supabase Storage 'media' bucket;
+-- `url` points at the public object (or the YouTube watch URL for curated picks).
+create table if not exists media_assets (
+  id            uuid primary key default gen_random_uuid(),
+  student_id    uuid references students(id) on delete cascade,
+  lesson_id     uuid references lessons(id) on delete set null,
+  kind          text not null,                   -- image | podcast | video | youtube
+  title         text default '',
+  prompt        text default '',                 -- the prompt/topic that produced it
+  url           text default '',                 -- public asset URL (or YouTube URL)
+  thumbnail_url text default '',
+  meta          jsonb default '{}'::jsonb,        -- kind-specific extras (slides[], script, duration…)
+  status        text not null default 'ready',   -- ready | generating | error
+  created_at    timestamptz default now()
+);
+create index if not exists media_assets_student_idx on media_assets (student_id);
+create index if not exists media_assets_lesson_idx  on media_assets (lesson_id);
+
 -- ---------- Seed default AI prompts (admin can edit these in the UI) ----------
 insert into prompts (id, label, content) values
 (

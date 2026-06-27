@@ -7,6 +7,7 @@ import Markdown from "@/components/Markdown";
 import Onboarding from "@/components/Onboarding";
 import Preparing from "@/components/Preparing";
 import { createTracker, type Tracker } from "@/lib/track";
+import UsageMeter, { type RateStatus } from "@/components/UsageMeter";
 import type { Lesson, Student, Progress } from "@/lib/supabase";
 import {
   BookOpen,
@@ -26,6 +27,9 @@ import {
   Heart,
   Trophy,
   Glasses,
+  AlertTriangle,
+  Clock,
+  Ban,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +68,9 @@ function StudentInner() {
   const [nudge, setNudge] = useState<{ message: string; lessonId: string | null; mood: string } | null>(null);
   const nudgeFetched = useRef(false);
   const [tools, setTools] = useState<StudentToolCard[]>([]);
+  // When an AI request is warned/throttled/blocked, the API returns the rate
+  // status. We surface a gentle, student-friendly notice from it.
+  const [rateNotice, setRateNotice] = useState<RateStatus | null>(null);
 
   // Invisible activity tracker — one per student session.
   const tracker = useMemo<Tracker | null>(
@@ -112,7 +119,12 @@ function StudentInner() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: "student", studentId }),
       })
-        .then((r) => (r.ok ? r.json() : null))
+        .then(async (r) => {
+          const d = await r.json().catch(() => null);
+          // 429 (or any payload carrying a rate status) → surface the notice.
+          if (d?.rate) setRateNotice(d.rate);
+          return r.ok ? d : null;
+        })
         .then((d) => {
           const a = d?.actions?.[0];
           if (a)
@@ -201,12 +213,17 @@ function StudentInner() {
       <header className="border-b border-line bg-white">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4">
           <Logo />
-          <button
-            onClick={() => router.push("/")}
-            className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
-          >
-            <LogOut size={16} /> Sign out
-          </button>
+          <div className="flex items-center gap-4">
+            <div className="hidden sm:block">
+              <UsageMeter studentId={studentId} compact />
+            </div>
+            <button
+              onClick={() => router.push("/")}
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
+            >
+              <LogOut size={16} /> Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -220,6 +237,56 @@ function StudentInner() {
             Here are your personalized lessons. Keep going — every question counts.
           </p>
         </div>
+
+        {/* Daily AI request notice — only appears when the student is nearing,
+            throttled by, or has hit their daily limit. Stays invisible otherwise
+            so the normal experience is clean. */}
+        {rateNotice && rateNotice.tier !== "ok" && rateNotice.message && (
+          <Card
+            className={`mt-5 flex items-start gap-3 p-4 animate-fadeUp ${
+              rateNotice.tier === "block"
+                ? "border-red-200 bg-red-50/70"
+                : rateNotice.tier === "throttle"
+                ? "border-orange-200 bg-orange-50/70"
+                : "border-amber-200 bg-amber-50/70"
+            }`}
+          >
+            <div
+              className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                rateNotice.tier === "block"
+                  ? "bg-red-100 text-red-600"
+                  : rateNotice.tier === "throttle"
+                  ? "bg-orange-100 text-orange-600"
+                  : "bg-amber-100 text-amber-600"
+              }`}
+            >
+              {rateNotice.tier === "block" ? (
+                <Ban size={16} />
+              ) : rateNotice.tier === "throttle" ? (
+                <Clock size={16} />
+              ) : (
+                <AlertTriangle size={16} />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p
+                className={`text-sm font-medium ${
+                  rateNotice.tier === "block"
+                    ? "text-red-700"
+                    : rateNotice.tier === "throttle"
+                    ? "text-orange-700"
+                    : "text-amber-700"
+                }`}
+              >
+                {rateNotice.message}
+              </p>
+              <p className="mt-0.5 text-xs text-ink-muted">
+                Your lessons and practice are always available — this only affects
+                instant help. {rateNotice.count}/{rateNotice.limit} used today.
+              </p>
+            </div>
+          </Card>
+        )}
 
         {/* Personalized next-step nudge (quiet, dismissible by acting on it) */}
         {nudge && (

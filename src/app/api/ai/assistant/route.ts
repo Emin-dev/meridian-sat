@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { summarizeEvents } from "@/lib/insights";
+import { guardStudentAI } from "@/lib/ratelimit";
 
 export const maxDuration = 60;
 
@@ -223,6 +224,8 @@ async function studentAssistant(supabase: any, studentId: string) {
   if (!studentId) {
     return NextResponse.json({ error: "studentId required" }, { status: 400 });
   }
+  const { blocked } = await guardStudentAI(studentId);
+  if (blocked) return blocked;
 
   const [{ data: student }, { data: events }, { data: progress }, { data: lessons }] =
     await Promise.all([

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateDraftPackage } from "@/lib/lessongen";
+import { fallbackPackage } from "@/lib/lessongen";
+import { checkAndConsume } from "@/lib/ratelimit";
 
 export const maxDuration = 60;
 
@@ -50,10 +52,30 @@ export async function POST(req: NextRequest) {
     // 2) Build the first draft package and file it for teacher review.
     //    Done inline (within the function's 60s budget) so the request reliably
     //    lands even on serverless; the student is already locked regardless.
+    //    CRITICAL: we ALWAYS file a pending request — if AI personalization
+    //    fails, we file a minimal fallback package so the teacher always has
+    //    something to approve and the student is never stuck in "preparing"
+    //    with an empty review queue.
+    // Record this generation against the student's daily budget, but NEVER block
+    // onboarding on it — a brand-new student must always be able to finish setup.
     try {
-      const pkg = await generateDraftPackage(student, answers, {
-        lessonCount: 4,
-      });
+      await checkAndConsume(studentId);
+    } catch {
+      /* non-blocking */
+    }
+
+    let pkg;
+    try {
+      pkg = await generateDraftPackage(student, answers, { lessonCount: 4 });
+      if (!Array.isArray(pkg.lessons) || pkg.lessons.length === 0) {
+        throw new Error("Empty package");
+      }
+    } catch (genErr: any) {
+      console.error("Draft generation failed, using fallback:", genErr?.message);
+      pkg = fallbackPackage(student);
+    }
+
+    try {
       await supabase.from("lesson_requests").insert({
         student_id: studentId,
         status: "pending",
@@ -69,18 +91,17 @@ export async function POST(req: NextRequest) {
       await supabase
         .from("students")
         .update({
-          weak_areas: pkg.weak_areas.length
+          weak_areas: pkg.weak_areas?.length
             ? pkg.weak_areas
             : student.weak_areas || [],
           target_score: pkg.target_score || student.target_score || 1400,
           notes: pkg.notes || student.notes || "",
         })
         .eq("id", studentId);
-    } catch (genErr: any) {
-      // If generation fails, the student stays "preparing"; the teacher can
-      // trigger generation manually from the review screen. Don't fail the
-      // student's request — they've completed their part.
-      console.error("Draft generation failed:", genErr?.message);
+    } catch (insErr: any) {
+      // Even insert failure shouldn't break the student's request — they've
+      // completed their part. The teacher can rebuild from the review screen.
+      console.error("Filing lesson request failed:", insErr?.message);
     }
 
     return NextResponse.json({ student: locked });

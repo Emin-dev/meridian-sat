@@ -44,13 +44,16 @@ type ToolWithStudent = StudentTool & {
 export default function AdminTools({
   students,
   reload,
+  studentId,
 }: {
   students: Student[];
   reload?: () => void;
+  // When set, the tool control room is scoped to a single student.
+  studentId?: string;
 }) {
   const [tools, setTools] = useState<ToolWithStudent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [proposeFor, setProposeFor] = useState("");
+  const [proposeFor, setProposeFor] = useState(studentId || "");
   const [proposing, setProposing] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState("");
@@ -59,7 +62,8 @@ export default function AdminTools({
     setLoading(true);
     try {
       const d = await fetch("/api/student-tools").then((r) => r.json());
-      setTools(d.tools || []);
+      const all = d.tools || [];
+      setTools(studentId ? all.filter((t: any) => t.student_id === studentId) : all);
     } finally {
       setLoading(false);
     }
@@ -67,7 +71,9 @@ export default function AdminTools({
 
   useEffect(() => {
     load();
-  }, []);
+    if (studentId) setProposeFor(studentId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [studentId]);
 
   async function propose() {
     if (!proposeFor) return;
@@ -129,16 +135,18 @@ export default function AdminTools({
           </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
-          <div className="min-w-[220px] flex-1">
-            <Select
-              value={proposeFor}
-              onChange={setProposeFor}
-              options={[
-                { value: "", label: "Choose a student…" },
-                ...students.map((s) => ({ value: s.id, label: s.name })),
-              ]}
-            />
-          </div>
+          {!studentId && (
+            <div className="min-w-[220px] flex-1">
+              <Select
+                value={proposeFor}
+                onChange={setProposeFor}
+                options={[
+                  { value: "", label: "Choose a student…" },
+                  ...students.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+              />
+            </div>
+          )}
           <Button onClick={propose} disabled={!proposeFor || proposing}>
             {proposing ? (
               <>

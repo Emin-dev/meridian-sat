@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Button, Card, Badge, Spinner, Textarea } from "@/components/ui";
 import Markdown from "@/components/Markdown";
-import type { LessonRequest } from "@/lib/supabase";
+import type { LessonRequest, Student } from "@/lib/supabase";
 import {
   Check,
   X,
@@ -13,6 +13,8 @@ import {
   ChevronRight,
   Clock,
   Send,
+  Sparkles,
+  UserCog,
 } from "lucide-react";
 
 type ReqWithStudent = LessonRequest & {
@@ -21,22 +23,48 @@ type ReqWithStudent = LessonRequest & {
 
 // Admin review queue: pending personalized lesson packages waiting for the
 // teacher to approve, refine, or send back for a better version.
-export default function AdminReview({ reload }: { reload: () => void }) {
+export default function AdminReview({
+  reload,
+  studentId,
+}: {
+  reload: () => void;
+  // When set, the queue is scoped to a single student (per-student detail page).
+  studentId?: string;
+}) {
   const [requests, setRequests] = useState<ReqWithStudent[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const res = await fetch("/api/lesson-requests?status=pending");
-    const data = await res.json();
-    setRequests(data.requests || []);
+    const [rRes, sRes] = await Promise.all([
+      fetch("/api/lesson-requests?status=pending"),
+      fetch("/api/students"),
+    ]);
+    const rData = await rRes.json();
+    const sData = await sRes.json();
+    const reqs = rData.requests || [];
+    const studs = sData.students || [];
+    setRequests(studentId ? reqs.filter((r: any) => r.student_id === studentId) : reqs);
+    setStudents(studentId ? studs.filter((s: any) => s.id === studentId) : studs);
     setLoading(false);
   }
 
   useEffect(() => {
     load();
   }, []);
+
+  // Students who finished sign-up but have NO pending request waiting — they are
+  // stuck in "preparing" because their first package failed to generate. Surface
+  // them so the teacher can build their lessons and approve.
+  const pendingStudentIds = new Set(requests.map((r) => r.student_id));
+  const stuck = students.filter(
+    (s) =>
+      s.onboarded &&
+      (s.status === "preparing" || s.status === "new") &&
+      !pendingStudentIds.has(s.id)
+  );
 
   if (loading) {
     return (
@@ -61,11 +89,34 @@ export default function AdminReview({ reload }: { reload: () => void }) {
         </Button>
       </div>
 
+      {/* Recovery: students who signed up but have no draft to approve yet. */}
+      {stuck.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+          <div className="flex items-center gap-2">
+            <UserCog size={16} className="text-amber-600" />
+            <h3 className="text-sm font-bold text-ink">
+              Students waiting to start ({stuck.length})
+            </h3>
+          </div>
+          <p className="mt-1 text-xs text-ink-muted">
+            These students finished sign-up but their lessons haven&apos;t been
+            built yet. Build their plan, then approve it to let them in.
+          </p>
+          <div className="mt-3 space-y-2">
+            {stuck.map((s) => (
+              <StuckRow key={s.id} student={s} onDone={load} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {requests.length === 0 ? (
-        <Card className="mt-4 p-10 text-center text-ink-muted">
-          Nothing to review right now. New requests appear here when a student
-          finishes their sign-up.
-        </Card>
+        stuck.length === 0 && (
+          <Card className="mt-4 p-10 text-center text-ink-muted">
+            Nothing to review right now. New requests appear here when a student
+            finishes their sign-up.
+          </Card>
+        )
       ) : (
         <div className="mt-4 space-y-3">
           {requests.map((r) => (
@@ -82,6 +133,53 @@ export default function AdminReview({ reload }: { reload: () => void }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// A single stuck student with a button to build their lessons & file a request.
+function StuckRow({
+  student,
+  onDone,
+}: {
+  student: Student;
+  onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  async function build() {
+    setBusy(true);
+    try {
+      const res = await fetch("/api/lesson-requests/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ studentId: student.id }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        alert(d.error || "Could not build lessons. Please try again.");
+        return;
+      }
+      onDone();
+    } catch (e: any) {
+      alert(e?.message || "Could not build lessons. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-white p-3">
+      <div className="min-w-0">
+        <p className="truncate font-semibold text-ink">{student.name}</p>
+        <p className="truncate text-xs text-ink-muted">
+          Code: {student.access_code} · finished sign-up, no lessons yet
+        </p>
+      </div>
+      <Button onClick={build} disabled={busy} className="shrink-0">
+        {busy ? <Spinner /> : <Sparkles size={15} />}
+        {busy ? "Building…" : "Build lessons & review"}
+      </Button>
     </div>
   );
 }
