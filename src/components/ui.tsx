@@ -13,21 +13,21 @@ export function Logo({ className = "" }: { className?: string }) {
         aria-label="MeridianSAT logo"
       >
         <rect width="32" height="32" rx="9" fill="#1f4ced" />
-        {/* meridian: a rising arc crossed by a vertical line */}
+        {/* meridian: two minimalist comma forms */}
         <path
-          d="M7 22a11 11 0 0 1 18 0"
+          d="M12 10 C 9 13, 9 17, 12 19"
           stroke="white"
-          strokeWidth="2.3"
+          strokeWidth="2.4"
           strokeLinecap="round"
         />
+        <circle cx="12.3" cy="20.4" r="1.5" fill="white" />
         <path
-          d="M16 7v18"
+          d="M20 13 C 23 16, 23 20, 20 23"
           stroke="white"
-          strokeWidth="2.3"
+          strokeWidth="2.4"
           strokeLinecap="round"
-          opacity="0.9"
         />
-        <circle cx="16" cy="22" r="2.1" fill="white" />
+        <circle cx="20.3" cy="11.6" r="1.5" fill="white" />
       </svg>
       <span className="font-bold tracking-tight text-ink">
         Meridian<span className="text-brand-600">SAT</span>
