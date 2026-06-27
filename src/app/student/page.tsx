@@ -9,6 +9,8 @@ import Preparing from "@/components/Preparing";
 import { createTracker, type Tracker } from "@/lib/track";
 import UsageMeter, { type RateStatus } from "@/components/UsageMeter";
 import type { Lesson, Student, Progress } from "@/lib/supabase";
+import { studentFetch, setStudentToken, getStudentToken } from "@/lib/studentClient";
+import StudentMedia from "@/components/StudentMedia";
 import {
   BookOpen,
   Target,
@@ -58,6 +60,19 @@ function StudentInner() {
   const params = useSearchParams();
   const router = useRouter();
   const studentId = params.get("id") || "";
+  const [tokenReady, setTokenReady] = useState(false);
+
+  // Capture the per-student token from the URL hash (#t=...) on mount. The hash
+  // survives refresh and is never sent to the server. Without a token, the
+  // student API calls will 401 and we send the student back to sign in.
+  useEffect(() => {
+    const hash = typeof window !== "undefined" ? window.location.hash : "";
+    const m = hash.match(/[#&]t=([^&]+)/);
+    if (m) {
+      setStudentToken(decodeURIComponent(m[1]));
+    }
+    setTokenReady(true);
+  }, []);
 
   const [student, setStudent] = useState<Student | null>(null);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -87,11 +102,16 @@ function StudentInner() {
       router.push("/");
       return;
     }
+    if (!getStudentToken()) {
+      // No valid session token (e.g. opened with a bare ?id= URL). Require login.
+      router.push("/");
+      return;
+    }
     setLoading(true);
     const [sRes, lRes, pRes] = await Promise.all([
-      fetch(`/api/students/${studentId}`).then((r) => r.json()),
-      fetch(`/api/lessons?studentId=${studentId}`).then((r) => r.json()),
-      fetch(`/api/progress?studentId=${studentId}`).then((r) => r.json()),
+      studentFetch(`/api/students/${studentId}`).then((r) => r.json()),
+      studentFetch(`/api/lessons?studentId=${studentId}`).then((r) => r.json()),
+      studentFetch(`/api/progress?studentId=${studentId}`).then((r) => r.json()),
     ]);
     const me: Student | undefined = sRes.student || undefined;
     if (!me) {
@@ -114,7 +134,7 @@ function StudentInner() {
     // the student is thriving or struggling.
     if (me.status === "active" && !nudgeFetched.current) {
       nudgeFetched.current = true;
-      fetch("/api/ai/assistant", {
+      studentFetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: "student", studentId }),
@@ -139,7 +159,7 @@ function StudentInner() {
 
     // Load any tools the teacher has approved for this student.
     if (me.status === "active") {
-      fetch(`/api/student-tools?studentId=${studentId}&status=approved`)
+      studentFetch(`/api/student-tools?studentId=${studentId}&status=approved`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           if (d?.tools) setTools(d.tools);
@@ -149,9 +169,10 @@ function StudentInner() {
   }
 
   useEffect(() => {
+    if (!tokenReady) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [studentId]);
+  }, [studentId, tokenReady]);
 
   const progFor = (id: string) => progress.find((p) => p.lesson_id === id);
   const completedCount = progress.filter((p) => p.completed).length;
@@ -478,6 +499,9 @@ function StudentInner() {
             })}
           </div>
         )}
+
+        {/* Student media: view what the tutor created + request new media */}
+        <StudentMedia studentId={studentId} />
       </div>
     </main>
   );
@@ -577,7 +601,7 @@ function LessonView({
       lessonId: lesson.id,
       meta: { score, correctCount, total: questions.length },
     });
-    await fetch("/api/progress", {
+    await studentFetch("/api/progress", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

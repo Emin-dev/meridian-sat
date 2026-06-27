@@ -3,6 +3,9 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { summarizeEvents } from "@/lib/insights";
 import { guardStudentAI } from "@/lib/ratelimit";
+import { requireAdmin } from "@/lib/adminauth";
+import { requireStudent } from "@/lib/studentauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 60;
 
@@ -44,11 +47,15 @@ export async function POST(req: NextRequest) {
     const supabase = getSupabaseAdmin();
 
     if (role === "admin") {
+      const unauth = requireAdmin(req);
+      if (unauth) return unauth;
       return await adminAssistant(supabase, body?.tab || "review");
     }
+    const unauth = requireStudent(req, body?.studentId);
+    if (unauth) return unauth;
     return await studentAssistant(supabase, body?.studentId);
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("ai/assistant", err);
   }
 }
 

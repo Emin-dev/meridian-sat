@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 // GET /api/students -> list all students (admin only)
 export async function GET(req: NextRequest) {
@@ -12,10 +13,10 @@ export async function GET(req: NextRequest) {
       .from("students")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("students", error, 500);
     return NextResponse.json({ students: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("students", err);
   }
 }
 
@@ -38,9 +39,9 @@ export async function POST(req: NextRequest) {
       })
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("students", error, 500);
     return NextResponse.json({ student: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("students", err);
   }
 }

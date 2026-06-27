@@ -4,6 +4,7 @@ import { synthesizePodcast, uploadToStorage, recordAsset, hasGeminiKey } from "@
 import { generatePodcastScript } from "@/lib/mediagen";
 import type { PodcastTurn } from "@/lib/media";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -78,10 +79,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ asset });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Podcast generation failed." },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("media/podcast", err);
   }
 }

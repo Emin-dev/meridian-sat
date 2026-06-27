@@ -1,19 +1,22 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { peekUsage, grantBonus } from "@/lib/ratelimit";
 import { requireAdmin } from "@/lib/adminauth";
+import { requireStudent } from "@/lib/studentauth";
+import { apiError, badRequest, ok, parseJsonBody } from "@/lib/api";
 
-// GET /api/ai-usage?studentId=...  -> current daily usage status for a student
-// Used by both the student's screen (their meter) and the admin student page.
+// GET /api/ai-usage?studentId=...  -> current daily usage status for a student.
+// Used by the student's own meter and the admin student page; the caller must
+// own the id (or be admin).
 export async function GET(req: NextRequest) {
+  const studentId = req.nextUrl.searchParams.get("studentId");
+  if (!studentId) return badRequest("studentId required");
+  const unauth = requireStudent(req, studentId);
+  if (unauth) return unauth;
   try {
-    const studentId = req.nextUrl.searchParams.get("studentId");
-    if (!studentId) {
-      return NextResponse.json({ error: "studentId required" }, { status: 400 });
-    }
     const status = await peekUsage(studentId);
-    return NextResponse.json({ rate: status });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+    return ok({ rate: status });
+  } catch (err) {
+    return apiError("ai-usage:GET", err);
   }
 }
 
@@ -23,16 +26,15 @@ export async function POST(req: NextRequest) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
   try {
-    const { studentId, grant } = await req.json();
+    const body = await parseJsonBody<{ studentId?: string; grant?: number }>(req);
+    const studentId = body?.studentId;
+    const grant = body?.grant;
     if (!studentId || typeof grant !== "number" || grant <= 0) {
-      return NextResponse.json(
-        { error: "studentId and a positive grant are required." },
-        { status: 400 }
-      );
+      return badRequest("studentId and a positive grant are required.");
     }
     const status = await grantBonus(studentId, Math.min(grant, 1000));
-    return NextResponse.json({ rate: status });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+    return ok({ rate: status });
+  } catch (err) {
+    return apiError("ai-usage:POST", err);
   }
 }

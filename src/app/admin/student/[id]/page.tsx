@@ -21,7 +21,7 @@ import AdminInsights from "@/components/AdminInsights";
 import RichMedia from "@/components/RichMedia";
 import UsageMeter from "@/components/UsageMeter";
 import type { Lesson, Student } from "@/lib/supabase";
-import { adminFetch } from "@/lib/adminClient";
+import { adminFetch, restoreAdminSession } from "@/lib/adminClient";
 import {
   ArrowLeft,
   BookOpen,
@@ -63,10 +63,12 @@ export default function StudentDetailPage() {
   }
 
   useEffect(() => {
-    // Verify admin session by hitting an admin-only endpoint. The in-memory
-    // admin token is set at login on /admin and persists across client-side
-    // navigation (router.push). A hard refresh loses it -> redirect to /admin.
+    // Verify admin session. The in-memory token is set at login on /admin and
+    // persists across client-side navigation. On a hard refresh it's lost, so we
+    // first try to restore it from the httpOnly session cookie; only if that
+    // fails do we bounce back to /admin.
     (async () => {
+      await restoreAdminSession();
       const r = await adminFetch("/api/students");
       if (r.ok) {
         setAuthed(true);

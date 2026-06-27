@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateDraftPackage } from "@/lib/lessongen";
 import { aiComplete } from "@/lib/deepseek";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 60;
 
@@ -21,10 +22,10 @@ export async function GET(
       .select("*, students(*)")
       .eq("id", params.id)
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error) return apiError("lesson-requests/[id]", error, 404);
     return NextResponse.json({ request: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("lesson-requests/[id]", err);
   }
 }
 
@@ -70,7 +71,7 @@ export async function PATCH(
         .eq("id", params.id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return apiError("lesson-requests/[id]", error, 500);
       return NextResponse.json({ request: data });
     }
 
@@ -91,7 +92,7 @@ export async function PATCH(
           status: "published",
         }));
         const { error: lErr } = await supabase.from("lessons").insert(rows);
-        if (lErr) return NextResponse.json({ error: lErr.message }, { status: 500 });
+        if (lErr) return apiError("lesson-requests/[id]", lErr, 500);
       }
 
       // 2) Activate the student and publish plan + summary.
@@ -104,7 +105,7 @@ export async function PATCH(
           notes: reqRow.notes || student?.notes || "",
         })
         .eq("id", reqRow.student_id);
-      if (sErr) return NextResponse.json({ error: sErr.message }, { status: 500 });
+      if (sErr) return apiError("lesson-requests/[id]", sErr, 500);
 
       // 3) Mark this request approved.
       const { data, error } = await supabase
@@ -113,7 +114,7 @@ export async function PATCH(
         .eq("id", params.id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return apiError("lesson-requests/[id]", error, 500);
       return NextResponse.json({ request: data, published: lessons.length });
     }
 
@@ -159,7 +160,7 @@ export async function PATCH(
         })
         .select()
         .single();
-      if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+      if (cErr) return apiError("lesson-requests/[id]", cErr, 500);
       return NextResponse.json({ request: created });
     }
 
@@ -198,15 +199,12 @@ teacher: ${message}`;
         .eq("id", params.id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return apiError("lesson-requests/[id]", error, 500);
       return NextResponse.json({ request: data, reply });
     }
 
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "failed" },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("lesson-requests/[id]", err);
   }
 }

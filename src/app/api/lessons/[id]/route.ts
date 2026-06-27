@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 // GET /api/lessons/:id
 export async function GET(
@@ -14,10 +15,10 @@ export async function GET(
       .select("*")
       .eq("id", params.id)
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+    if (error) return apiError("lessons/[id]", error, 404);
     return NextResponse.json({ lesson: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("lessons/[id]", err);
   }
 }
 
@@ -51,10 +52,10 @@ export async function PATCH(
       .eq("id", params.id)
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("lessons/[id]", error, 500);
     return NextResponse.json({ lesson: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("lessons/[id]", err);
   }
 }
 
@@ -69,9 +70,9 @@ export async function DELETE(
   try {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("lessons").delete().eq("id", params.id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("lessons/[id]", error, 500);
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("lessons/[id]", err);
   }
 }

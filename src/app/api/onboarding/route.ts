@@ -3,6 +3,8 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateDraftPackage } from "@/lib/lessongen";
 import { fallbackPackage } from "@/lib/lessongen";
 import { checkAndConsume } from "@/lib/ratelimit";
+import { requireStudent } from "@/lib/studentauth";
+import { badRequest, apiError } from "@/lib/api";
 
 export const maxDuration = 60;
 
@@ -18,11 +20,12 @@ export async function POST(req: NextRequest) {
   try {
     const { studentId, answers } = await req.json();
     if (!studentId || !answers) {
-      return NextResponse.json(
-        { error: "studentId and answers are required." },
-        { status: 400 }
-      );
+      return badRequest("studentId and answers are required.");
     }
+
+    // The student may only onboard their OWN record (or an admin acting for them).
+    const unauth = requireStudent(req, studentId);
+    if (unauth) return unauth;
 
     const supabase = getSupabaseAdmin();
     const { data: student, error: sErr } = await supabase
@@ -46,7 +49,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
     if (lockErr) {
-      return NextResponse.json({ error: lockErr.message }, { status: 500 });
+      return apiError("onboarding", lockErr);
     }
 
     // 2) Build the first draft package and file it for teacher review.
@@ -105,10 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ student: locked });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Onboarding failed." },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("onboarding", err);
   }
 }

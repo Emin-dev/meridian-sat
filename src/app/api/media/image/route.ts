@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateImage, uploadToStorage, recordAsset } from "@/lib/media";
 import { refineImagePrompt } from "@/lib/mediagen";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -42,7 +43,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ asset });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Image generation failed." }, { status: 500 });
+  } catch (err) {
+    return apiError("media/image", err);
   }
 }

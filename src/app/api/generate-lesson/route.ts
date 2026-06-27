@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import {
-  getDeepSeek,
-  DEEPSEEK_MODEL,
+  chatComplete,
   fillTemplate,
   parseJsonFromModel,
 } from "@/lib/deepseek";
 import { MATH_AUTHORING } from "@/lib/mathprompt";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 60; // allow time for the model
 
@@ -57,18 +57,14 @@ export async function POST(req: NextRequest) {
       difficulty: difficulty || "medium",
     });
 
-    const client = getDeepSeek();
-    const completion = await client.chat.completions.create({
-      model: DEEPSEEK_MODEL,
-      messages: [
-        { role: "system", content: `${systemP}\n\n${MATH_AUTHORING}` },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.7,
-      response_format: { type: "json_object" },
-    });
-
-    const raw = completion.choices[0]?.message?.content || "{}";
+    const raw =
+      (await chatComplete(
+        [
+          { role: "system", content: `${systemP}\n\n${MATH_AUTHORING}` },
+          { role: "user", content: userPrompt },
+        ],
+        { json: true, temperature: 0.7 }
+      )) || "{}";
     const parsed = parseJsonFromModel(raw);
 
     const { data: lesson, error: lErr } = await supabase
@@ -88,14 +84,11 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (lErr) {
-      return NextResponse.json({ error: lErr.message }, { status: 500 });
+      return apiError("generate-lesson", lErr);
     }
 
     return NextResponse.json({ lesson });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Failed to generate lesson." },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("generate-lesson", err);
   }
 }

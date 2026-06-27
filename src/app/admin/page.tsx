@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Button, Card, Input, Textarea, Badge, Spinner, AIButton } from "@/components/ui";
 import UsageMeter from "@/components/UsageMeter";
-import { adminFetch, setAdminToken } from "@/lib/adminClient";
+import { adminFetch, setAdminToken, restoreAdminSession } from "@/lib/adminClient";
 import type { Student, Prompt } from "@/lib/supabase";
 import {
   Users,
@@ -28,6 +28,7 @@ type View = "students" | "settings";
 export default function AdminPage() {
   const router = useRouter();
   const [authed, setAuthed] = useState(false);
+  const [initing, setIniting] = useState(true);
   const [pw, setPw] = useState("");
   const [authErr, setAuthErr] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
@@ -78,6 +79,40 @@ export default function AdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pw]);
 
+  // Restore an existing admin session from the httpOnly cookie on first load,
+  // so a page refresh doesn't force the admin to retype the password.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const ok = await restoreAdminSession();
+        if (!cancelled && ok) {
+          setAuthed(true);
+          loadAll();
+        }
+      } finally {
+        if (!cancelled) setIniting(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function logout() {
+    try {
+      await fetch("/api/admin-logout", { method: "POST" });
+    } catch {
+      /* ignore */
+    }
+    setAdminToken(null);
+    setAuthed(false);
+    triedPw.current = "";
+    setPw("");
+    router.push("/");
+  }
+
   async function loadAll() {
     setLoading(true);
     const [s, pr] = await Promise.all([
@@ -114,6 +149,16 @@ export default function AdminPage() {
       }
     } catch {}
     setPending(counts);
+  }
+
+  if (initing) {
+    return (
+      <main className="flex min-h-screen items-center justify-center px-5">
+        <div className="flex items-center gap-2 text-sm text-ink-muted">
+          <Spinner className="h-4 w-4" /> Restoring session…
+        </div>
+      </main>
+    );
   }
 
   if (!authed) {
@@ -167,10 +212,10 @@ export default function AdminPage() {
             </NavBtn>
           </div>
           <button
-            onClick={() => router.push("/")}
+            onClick={logout}
             className="hidden items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink sm:inline-flex"
           >
-            <Home size={16} /> Exit
+            <Home size={16} /> Sign out
           </button>
         </div>
       </header>

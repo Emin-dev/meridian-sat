@@ -20,6 +20,7 @@ import {
   Download,
 } from "lucide-react";
 import { adminFetch } from "@/lib/adminClient";
+import MediaRequestsQueue from "@/components/MediaRequestsQueue";
 
 type MediaAsset = {
   id: string;
@@ -89,6 +90,9 @@ export default function RichMedia({ student }: { student: Student }) {
           curated YouTube clips.
         </p>
       </div>
+
+      {/* Student-initiated requests waiting on the teacher (never auto-created) */}
+      <MediaRequestsQueue studentId={student.id} />
 
       {/* tool switcher */}
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

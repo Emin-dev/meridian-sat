@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 30;
 
@@ -38,7 +39,7 @@ export async function POST(req: NextRequest) {
     );
     const parsed = parseJsonFromModel(raw);
     return NextResponse.json({ topics: parsed.topics || [] });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message, topics: [] }, { status: 500 });
+  } catch (err) {
+    return apiError("ai/suggest-topics", err);
   }
 }

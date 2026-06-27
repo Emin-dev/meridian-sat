@@ -35,8 +35,11 @@ export default function Home() {
         setError(data.error || "We don't recognize that code yet.");
         return;
       }
-      // Signed in — go straight to the student area.
-      router.push(`/student?id=${data.student.id}`);
+      // Signed in — go straight to the student area. The per-student token is
+      // passed in the URL hash (#t=...): it survives refresh, is never sent to
+      // the server, and never appears in server/access logs.
+      const tok = data.token ? `#t=${encodeURIComponent(data.token)}` : "";
+      router.push(`/student?id=${data.student.id}${tok}`);
     } catch {
       setStatus("error");
       setError("Something went wrong. Please try again.");

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiComplete } from "@/lib/deepseek";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 30;
 
@@ -24,7 +25,7 @@ export async function POST(req: NextRequest) {
       .toUpperCase()
       .slice(0, 14);
     return NextResponse.json({ code: code || "STUDENT2026" });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("ai/suggest-code", err);
   }
 }

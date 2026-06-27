@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { summarizeEvents } from "@/lib/insights";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 60;
 
@@ -238,11 +239,11 @@ Pick 1-3. Order best-fit first.`;
       .select("*");
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiError("ai/propose-tools", error);
     }
 
     return NextResponse.json({ proposed: inserted || [] });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("ai/propose-tools", err);
   }
 }

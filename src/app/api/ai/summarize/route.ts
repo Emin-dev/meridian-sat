@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete } from "@/lib/deepseek";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 45;
 
@@ -43,7 +44,7 @@ Write a progress summary note.`;
 
     const summary = await aiComplete(system, user, { temperature: 0.5 });
     return NextResponse.json({ summary: summary.trim() });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("ai/summarize", err);
   }
 }

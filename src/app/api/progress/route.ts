@@ -1,37 +1,56 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminauth";
+import { requireStudent } from "@/lib/studentauth";
+import { apiError, badRequest, ok, parseJsonBody, reqId } from "@/lib/api";
 
-// GET /api/progress?studentId=...  -> progress rows
+// GET /api/progress?studentId=...  -> progress rows for one student.
+// Caller must own the id (or be admin). Without a studentId, admin only.
 export async function GET(req: NextRequest) {
+  const studentId = req.nextUrl.searchParams.get("studentId");
+  if (studentId) {
+    const unauth = requireStudent(req, studentId);
+    if (unauth) return unauth;
+  } else {
+    const unauth = requireAdmin(req);
+    if (unauth) return unauth;
+  }
   try {
-    const studentId = req.nextUrl.searchParams.get("studentId");
     const supabase = getSupabaseAdmin();
     let q = supabase.from("progress").select("*");
     if (studentId) q = q.eq("student_id", studentId);
     const { data, error } = await q;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ progress: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    if (error) return apiError("progress:GET", error);
+    return ok({ progress: data });
+  } catch (err) {
+    return apiError("progress:GET", err);
   }
 }
 
-// POST /api/progress -> upsert a student's result on a lesson
+// POST /api/progress -> upsert a student's result on a lesson.
+// The caller must own the student_id they are writing for (or be admin).
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await parseJsonBody<any>(req);
+    if (!body) return badRequest("Invalid request.");
+    const studentId = reqId(body.student_id);
+    if (!studentId) return badRequest("A valid student_id is required.");
+
+    const unauth = requireStudent(req, studentId);
+    if (unauth) return unauth;
+
     const supabase = getSupabaseAdmin();
 
     // does a row already exist?
     const { data: existing } = await supabase
       .from("progress")
       .select("id")
-      .eq("student_id", body.student_id)
+      .eq("student_id", studentId)
       .eq("lesson_id", body.lesson_id)
       .maybeSingle();
 
     const payload = {
-      student_id: body.student_id,
+      student_id: studentId,
       lesson_id: body.lesson_id,
       completed: body.completed ?? true,
       score: body.score ?? null,
@@ -51,10 +70,9 @@ export async function POST(req: NextRequest) {
     } else {
       result = await supabase.from("progress").insert(payload).select().single();
     }
-    if (result.error)
-      return NextResponse.json({ error: result.error.message }, { status: 500 });
-    return NextResponse.json({ progress: result.data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    if (result.error) return apiError("progress:POST", result.error);
+    return ok({ progress: result.data });
+  } catch (err) {
+    return apiError("progress:POST", err);
   }
 }

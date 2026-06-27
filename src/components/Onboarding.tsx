@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Logo, Button, Card, Spinner } from "@/components/ui";
 import type { Student } from "@/lib/supabase";
+import { studentFetch } from "@/lib/studentClient";
 import { Sparkles, ChevronRight, ChevronLeft } from "lucide-react";
 
 // Unskippable first-login survey. The student MUST answer these before they can
@@ -124,7 +125,7 @@ export default function Onboarding({
     setSubmitting(true);
     setError("");
     try {
-      const res = await fetch("/api/onboarding", {
+      const res = await studentFetch("/api/onboarding", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id, answers }),

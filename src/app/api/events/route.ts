@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { recomputeEngagement } from "@/lib/insights";
+import { apiError } from "@/lib/api";
 
 // POST /api/events
 // body: { studentId, type, lessonId?, meta?, durationMs? }
@@ -34,14 +35,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { error } = await supabase.from("events").insert(rows);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("events", error, 500);
 
     // Update lightweight rolling engagement stats (sync, fast, no AI call).
     await recomputeEngagement(supabase, studentId, rows);
 
     return NextResponse.json({ ok: true, inserted: rows.length });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("events", err);
   }
 }
 
@@ -59,9 +60,9 @@ export async function GET(req: NextRequest) {
       .limit(limit);
     if (studentId) q = q.eq("student_id", studentId);
     const { data, error } = await q;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("events", error, 500);
     return NextResponse.json({ events: data || [] });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("events", err);
   }
 }

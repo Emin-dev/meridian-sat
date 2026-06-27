@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateDraftPackage, fallbackPackage } from "@/lib/lessongen";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 60;
 
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
       .select()
       .single();
     if (cErr) {
-      return NextResponse.json({ error: cErr.message }, { status: 500 });
+      return apiError("lesson-requests/generate", cErr);
     }
 
     // Keep the AI-derived profile fresh on the student record.
@@ -100,10 +101,7 @@ export async function POST(req: NextRequest) {
       .eq("id", studentId);
 
     return NextResponse.json({ request: created, usedFallback });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Generation failed." },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("lesson-requests/generate", err);
   }
 }

@@ -211,3 +211,24 @@ insert into settings (key, value) values
   ('app_name', 'MeridianSAT'),
   ('welcome_message', 'Welcome back! Your personalized SAT lessons are ready.')
 on conflict (key) do nothing;
+
+-- ---------- Student-requested media ----------
+-- Media is NEVER auto-generated. A teacher either creates it directly in the
+-- Rich-media studio, OR a student asks for a specific piece of media here and a
+-- teacher reviews the request (approve = create it, or deny). This keeps the
+-- school in full control of every asset that gets produced while still letting
+-- students pull in help they actually want.
+create table if not exists media_requests (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  uuid references students(id) on delete cascade,
+  lesson_id   uuid references lessons(id) on delete set null,  -- optional context
+  kind        text not null default 'image',  -- image | podcast | video | youtube
+  topic       text not null,                   -- what the student wants media about
+  note        text default '',                 -- optional extra detail from student
+  status      text not null default 'pending', -- pending | approved | denied | fulfilled
+  asset_id    uuid references media_assets(id) on delete set null, -- set when fulfilled
+  reviewed_at timestamptz,
+  created_at  timestamptz default now()
+);
+create index if not exists media_requests_student_idx on media_requests (student_id);
+create index if not exists media_requests_status_idx  on media_requests (status);

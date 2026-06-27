@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 // GET /api/settings -> all settings as key/value
 export async function GET(req: NextRequest) {
@@ -10,12 +11,12 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.from("settings").select("*");
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("settings", error, 500);
     const map: Record<string, string> = {};
     (data || []).forEach((r) => (map[r.key] = r.value));
     return NextResponse.json({ settings: map });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("settings", err);
   }
 }
 
@@ -30,9 +31,9 @@ export async function PATCH(req: NextRequest) {
     const { error } = await supabase
       .from("settings")
       .upsert({ key, value }, { onConflict: "key" });
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("settings", error, 500);
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("settings", err);
   }
 }

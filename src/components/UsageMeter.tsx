@@ -2,7 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { Spinner } from "@/components/ui";
+import { getStudentToken } from "@/lib/studentClient";
+import { getAdminToken } from "@/lib/adminClient";
 import { Gauge, AlertTriangle, Clock, Ban } from "lucide-react";
+
+// UsageMeter appears on both the student dashboard and the admin student-detail
+// page, so it sends whichever session token is available (student or admin).
+function usageFetch(url: string) {
+  const headers = new Headers();
+  const s = getStudentToken();
+  const a = getAdminToken();
+  if (s) headers.set("x-student-token", s);
+  if (a) headers.set("x-admin-token", a);
+  return fetch(url, { headers });
+}
 
 export type RateStatus = {
   allowed: boolean;
@@ -46,7 +59,7 @@ export default function UsageMeter({
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    fetch(`/api/ai-usage?studentId=${studentId}`)
+    usageFetch(`/api/ai-usage?studentId=${studentId}`)
       .then((r) => r.json())
       .then((d) => {
         if (alive) setRate(d.rate || null);

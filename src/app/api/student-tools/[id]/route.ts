@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 // PATCH /api/student-tools/:id
 // body: { action: "approve" | "deny" | "edit" }
@@ -34,7 +35,7 @@ export async function PATCH(
         .eq("id", params.id)
         .select("*")
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return apiError("student-tools/[id]", error, 500);
       return NextResponse.json({ tool: data });
     }
 
@@ -48,13 +49,13 @@ export async function PATCH(
         .eq("id", params.id)
         .select("*")
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return apiError("student-tools/[id]", error, 500);
       return NextResponse.json({ tool: data });
     }
 
     return NextResponse.json({ error: "Unknown action." }, { status: 400 });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("student-tools/[id]", err);
   }
 }
 
@@ -69,9 +70,9 @@ export async function DELETE(
   try {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("student_tools").delete().eq("id", params.id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("student-tools/[id]", error, 500);
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("student-tools/[id]", err);
   }
 }

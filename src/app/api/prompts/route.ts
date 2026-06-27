@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 // GET /api/prompts -> all editable AI prompts (admin)
 export async function GET(req: NextRequest) {
@@ -10,10 +11,10 @@ export async function GET(req: NextRequest) {
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.from("prompts").select("*").order("id");
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("prompts", error, 500);
     return NextResponse.json({ prompts: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("prompts", err);
   }
 }
 
@@ -34,9 +35,9 @@ export async function PATCH(req: NextRequest) {
       .eq("id", id)
       .select()
       .single();
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("prompts", error, 500);
     return NextResponse.json({ prompt: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("prompts", err);
   }
 }

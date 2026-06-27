@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { summarizeEvents, quickLabel } from "@/lib/insights";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 60;
 
@@ -122,10 +123,7 @@ Return STRICT JSON:
       breakdown: facts,
       quickLabel: quick,
     });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "failed" },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("ai/insights", err);
   }
 }

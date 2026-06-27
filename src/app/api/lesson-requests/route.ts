@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 // GET /api/lesson-requests?status=pending          -> all requests (admin queue)
 // GET /api/lesson-requests?studentId=...           -> requests for one student
@@ -23,9 +24,9 @@ export async function GET(req: NextRequest) {
     if (studentId) q = q.eq("student_id", studentId);
 
     const { data, error } = await q;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiError("lesson-requests", error, 500);
     return NextResponse.json({ requests: data || [] });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("lesson-requests", err);
   }
 }

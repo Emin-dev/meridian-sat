@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiComplete } from "@/lib/deepseek";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const maxDuration = 45;
 
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     }\n\nText:\n${text || ""}`;
     const result = await aiComplete(system, user, { temperature: 0.6 });
     return NextResponse.json({ text: result.trim() });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err) {
+    return apiError("ai/improve", err);
   }
 }

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Logo, Card } from "@/components/ui";
 import type { Student } from "@/lib/supabase";
+import { studentFetch } from "@/lib/studentClient";
 import { CheckCircle2, Clock, Mail, Sparkles } from "lucide-react";
 
 // Locked "your teacher is preparing your lessons" screen.
@@ -45,7 +46,7 @@ export default function Preparing({
       if (polling.current) return;
       polling.current = true;
       try {
-        const res = await fetch(`/api/students/${student.id}`);
+        const res = await studentFetch(`/api/students/${student.id}`);
         const data = await res.json();
         const me: Student | undefined = data.student || undefined;
         if (me && me.status === "active" && !stopped) {

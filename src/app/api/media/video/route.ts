@@ -10,6 +10,7 @@ import {
 import { generateVideoBlueprint } from "@/lib/mediagen";
 import type { PodcastTurn } from "@/lib/media";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -109,10 +110,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ asset, needsKey: !withAudio });
-  } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "Video overview generation failed." },
-      { status: 500 }
-    );
+  } catch (err) {
+    return apiError("media/video", err);
   }
 }

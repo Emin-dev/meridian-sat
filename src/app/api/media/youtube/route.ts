@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchYouTube, recordAsset } from "@/lib/media";
 import { requireAdmin } from "@/lib/adminauth";
+import { apiError } from "@/lib/api";
 
 export const runtime = "nodejs";
 
@@ -14,8 +15,8 @@ export async function GET(req: NextRequest) {
     if (!q) return NextResponse.json({ error: "q required" }, { status: 400 });
     const results = await searchYouTube(q);
     return NextResponse.json({ results });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("media/youtube", err);
   }
 }
 
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
       meta: { videoId: video.videoId || "", channel: video.channel || "" },
     });
     return NextResponse.json({ asset });
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "failed" }, { status: 500 });
+  } catch (err) {
+    return apiError("media/youtube", err);
   }
 }
