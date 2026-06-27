@@ -438,6 +438,7 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
     grade: student.grade || "",
     target_score: student.target_score,
     weak_areas: Array.isArray(student.weak_areas) ? student.weak_areas.join(", ") : "",
+    tags: Array.isArray(student.tags) ? student.tags.join(", ") : "",
     notes: student.notes || "",
   });
   const [saving, setSaving] = useState(false);
@@ -458,6 +459,10 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
         body: JSON.stringify({
           ...form,
           weak_areas: form.weak_areas
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+          tags: form.tags
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean),
@@ -540,6 +545,31 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
             value={form.weak_areas}
             onChange={(v) => setForm({ ...form, weak_areas: v })}
           />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-ink-soft">
+            Cohort tags (comma-separated)
+          </span>
+          <Input
+            value={form.tags}
+            onChange={(v) => setForm({ ...form, tags: v })}
+          />
+          {form.tags.trim() && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {form.tags
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map((t) => (
+                  <span
+                    key={t}
+                    className="rounded-full bg-brand-50 px-2 py-0.5 text-[11px] font-semibold text-brand-700"
+                  >
+                    {t}
+                  </span>
+                ))}
+            </div>
+          )}
         </label>
         <label className="block">
           <span className="mb-1.5 flex items-center justify-between gap-2">

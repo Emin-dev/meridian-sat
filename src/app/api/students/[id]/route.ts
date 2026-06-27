@@ -55,6 +55,7 @@ export async function PATCH(
       "study_plan",
       "ai_summary",
       "labels",
+      "tags",
       "insights",
       "recommendations",
     ]) {

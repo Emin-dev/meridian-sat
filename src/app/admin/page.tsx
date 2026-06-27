@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Button, Card, Input, Textarea, Badge, Spinner, AIButton } from "@/components/ui";
 import UsageMeter from "@/components/UsageMeter";
+import AdminAnalytics from "@/components/AdminAnalytics";
 import { adminFetch, setAdminToken, restoreAdminSession } from "@/lib/adminClient";
 import type { Student, Prompt } from "@/lib/supabase";
 import {
@@ -21,9 +22,14 @@ import {
   AlertTriangle,
   Trash2,
   Pencil,
+  BarChart3,
+  Tag,
+  X,
+  CheckSquare,
+  Square,
 } from "lucide-react";
 
-type View = "students" | "settings";
+type View = "overview" | "students" | "settings";
 
 export default function AdminPage() {
   const router = useRouter();
@@ -32,7 +38,7 @@ export default function AdminPage() {
   const [pw, setPw] = useState("");
   const [authErr, setAuthErr] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
-  const [view, setView] = useState<View>("students");
+  const [view, setView] = useState<View>("overview");
 
   const [students, setStudents] = useState<Student[]>([]);
   const [prompts, setPrompts] = useState<Prompt[]>([]);
@@ -204,6 +210,9 @@ export default function AdminPage() {
             <Badge tone="brand">Admin</Badge>
           </div>
           <div className="flex items-center gap-1 rounded-xl border border-line bg-white p-1">
+            <NavBtn active={view === "overview"} onClick={() => setView("overview")}>
+              <BarChart3 size={16} /> Overview
+            </NavBtn>
             <NavBtn active={view === "students"} onClick={() => setView("students")}>
               <Users size={16} /> Students
             </NavBtn>
@@ -220,7 +229,14 @@ export default function AdminPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-5 py-6">
+      <div className="mx-auto max-w-6xl px-5 py-6">
+        {view === "overview" && (
+          <AdminAnalytics
+            students={students}
+            loading={loading}
+            onOpen={(id) => router.push(`/admin/student/${id}`)}
+          />
+        )}
         {view === "students" && (
           <StudentsList
             students={students}
@@ -274,16 +290,28 @@ function StudentsList({
 }) {
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
+  const [tagFilter, setTagFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    for (const s of students) for (const t of s.tags || []) set.add(t);
+    return Array.from(set).sort();
+  }, [students]);
 
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
-    const list = t
+    let list = t
       ? students.filter(
           (s) =>
             s.name.toLowerCase().includes(t) ||
-            s.access_code.toLowerCase().includes(t)
+            s.access_code.toLowerCase().includes(t) ||
+            (s.tags || []).some((tag) => tag.toLowerCase().includes(t))
         )
       : students;
+    if (tagFilter !== "all")
+      list = list.filter((s) => (s.tags || []).includes(tagFilter));
     // Sort: students needing attention first, then by name.
     return [...list].sort((a, b) => {
       const pa = pending[a.id] || 0;
@@ -291,9 +319,26 @@ function StudentsList({
       if (pa !== pb) return pb - pa;
       return a.name.localeCompare(b.name);
     });
-  }, [students, q, pending]);
+  }, [students, q, pending, tagFilter]);
 
   const needsAttention = Object.values(pending).filter(Boolean).length;
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+  function toggleSelectAll() {
+    setSelected((prev) =>
+      prev.size === filtered.length
+        ? new Set()
+        : new Set(filtered.map((s) => s.id))
+    );
+  }
+  const selectedCount = selected.size;
 
   return (
     <div>
@@ -326,11 +371,70 @@ function StudentsList({
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
+            data-testid="search-students"
             placeholder="Search by name or access code…"
             className="w-full rounded-xl border border-line bg-white py-2.5 pl-9 pr-3 text-sm text-ink outline-none transition focus:border-brand-400"
           />
         </div>
       </div>
+
+      {/* Cohort (tag) filter chips */}
+      <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <Tag size={14} className="text-ink-muted" />
+        <TagChip active={tagFilter === "all"} onClick={() => setTagFilter("all")}>
+          All
+        </TagChip>
+        {allTags.map((t) => (
+          <TagChip key={t} active={tagFilter === t} onClick={() => setTagFilter(t)}>
+            {t}
+          </TagChip>
+        ))}
+        {allTags.length === 0 && (
+          <span className="text-xs text-ink-muted">
+            No tags yet. Select students below to create a cohort tag.
+          </span>
+        )}
+      </div>
+
+      {/* Bulk action bar */}
+      {!loading && filtered.length > 0 && (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-xl border border-line bg-paper px-3 py-2">
+          <button
+            onClick={toggleSelectAll}
+            data-testid="select-all"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-soft hover:text-ink"
+          >
+            {selected.size === filtered.length && filtered.length > 0 ? (
+              <CheckSquare size={15} className="text-brand-600" />
+            ) : (
+              <Square size={15} />
+            )}
+            Select all
+          </button>
+          <span className="text-xs text-ink-muted">
+            {selectedCount > 0
+              ? `${selectedCount} selected`
+              : "Select students to tag a cohort"}
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            {selectedCount > 0 && (
+              <button
+                onClick={() => setSelected(new Set())}
+                className="text-xs font-medium text-ink-muted hover:text-ink"
+              >
+                Clear
+              </button>
+            )}
+            <Button
+              variant={selectedCount > 0 ? "primary" : "ghost"}
+              onClick={() => setBulkOpen(true)}
+              disabled={selectedCount === 0}
+            >
+              <Tag size={15} /> Tag selected
+            </Button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="mt-6 flex items-center gap-2 text-sm text-ink-muted">
@@ -349,7 +453,10 @@ function StudentsList({
               key={s.id}
               student={s}
               pending={pending[s.id] || 0}
+              selected={selected.has(s.id)}
+              onToggleSelect={() => toggleSelect(s.id)}
               onOpen={() => onOpen(s.id)}
+              onTagClick={(tag) => setTagFilter(tag)}
             />
           ))}
         </div>
@@ -357,6 +464,7 @@ function StudentsList({
 
       {creating && (
         <StudentCreateModal
+          existingTags={allTags}
           onClose={() => setCreating(false)}
           onSaved={(id) => {
             setCreating(false);
@@ -365,24 +473,82 @@ function StudentsList({
           }}
         />
       )}
+
+      {bulkOpen && (
+        <BulkTagModal
+          ids={Array.from(selected)}
+          existingTags={allTags}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => {
+            setBulkOpen(false);
+            setSelected(new Set());
+            reload();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function TagChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`rounded-full px-3 py-1 text-xs font-semibold transition ${
+        active
+          ? "bg-brand-600 text-white"
+          : "border border-line bg-white text-ink-soft hover:bg-paper"
+      }`}
+    >
+      {children}
+    </button>
   );
 }
 
 function StudentRow({
   student,
   pending,
+  selected,
+  onToggleSelect,
   onOpen,
+  onTagClick,
 }: {
   student: Student;
   pending: number;
+  selected: boolean;
+  onToggleSelect: () => void;
   onOpen: () => void;
+  onTagClick: (tag: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
   const atRisk = (student.engagement_score || 0) < 35 && student.onboarded;
 
   return (
-    <Card className="flex items-center gap-4 p-4 transition hover:border-brand-300">
+    <Card
+      className={`flex items-center gap-3 p-4 transition hover:border-brand-300 ${
+        selected ? "border-brand-400 bg-brand-50/40" : ""
+      }`}
+    >
+      <button
+        onClick={onToggleSelect}
+        data-testid={`select-${student.id}`}
+        className="shrink-0 text-ink-muted hover:text-brand-600"
+        title="Select for bulk tagging"
+      >
+        {selected ? (
+          <CheckSquare size={18} className="text-brand-600" />
+        ) : (
+          <Square size={18} />
+        )}
+      </button>
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-4 text-left">
         <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand-50 text-sm font-bold text-brand-700">
           {student.name.slice(0, 2).toUpperCase()}
@@ -405,8 +571,26 @@ function StudentRow({
             )}
           </div>
           <p className="truncate text-xs text-ink-muted">
-            {student.grade || "—"} · Goal {student.target_score}
+            {student.grade || "-"}{" · "}Goal {student.target_score}
           </p>
+          {(student.tags || []).length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(student.tags || []).map((tag) => (
+                <span
+                  key={tag}
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onTagClick(tag);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-700 hover:bg-brand-100"
+                >
+                  <Tag size={9} /> {tag}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </button>
 
@@ -435,9 +619,11 @@ function StudentRow({
 }
 
 function StudentCreateModal({
+  existingTags,
   onClose,
   onSaved,
 }: {
+  existingTags: string[];
   onClose: () => void;
   onSaved: (id: string) => void;
 }) {
@@ -449,6 +635,7 @@ function StudentCreateModal({
     weak_areas: "",
     notes: "",
   });
+  const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   async function save() {
@@ -459,6 +646,7 @@ function StudentCreateModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...form,
+          tags,
           weak_areas: form.weak_areas
             .split(",")
             .map((s) => s.trim())
@@ -519,6 +707,9 @@ function StudentCreateModal({
             value={form.weak_areas}
             onChange={(v) => setForm({ ...form, weak_areas: v })}
           />
+        </Field>
+        <Field label="Cohort tags (group students who start together)">
+          <TagEditor tags={tags} setTags={setTags} suggestions={existingTags} />
         </Field>
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>
@@ -661,5 +852,161 @@ function Modal({
         {children}
       </div>
     </div>
+  );
+}
+
+/* ============================ Tag editor + bulk tag ============================ */
+
+// A small chip-style tag input with suggestions from existing cohort tags.
+function TagEditor({
+  tags,
+  setTags,
+  suggestions,
+}: {
+  tags: string[];
+  setTags: (t: string[]) => void;
+  suggestions: string[];
+}) {
+  const [draft, setDraft] = useState("");
+
+  function add(raw: string) {
+    const t = raw.trim();
+    if (!t || t.length > 40 || tags.includes(t)) {
+      setDraft("");
+      return;
+    }
+    setTags([...tags, t]);
+    setDraft("");
+  }
+  function remove(t: string) {
+    setTags(tags.filter((x) => x !== t));
+  }
+
+  const unused = suggestions.filter((s) => !tags.includes(s));
+
+  return (
+    <div>
+      <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-line bg-white p-2">
+        {tags.map((t) => (
+          <span
+            key={t}
+            className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700"
+          >
+            {t}
+            <button
+              onClick={() => remove(t)}
+              className="text-brand-400 hover:text-brand-700"
+              aria-label={`Remove ${t}`}
+            >
+              <X size={12} />
+            </button>
+          </span>
+        ))}
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              add(draft);
+            } else if (e.key === "Backspace" && !draft && tags.length) {
+              remove(tags[tags.length - 1]);
+            }
+          }}
+          placeholder={tags.length ? "Add another..." : "e.g. Spring Cohort"}
+          data-testid="tag-input"
+          className="min-w-[120px] flex-1 bg-transparent px-1 py-0.5 text-sm text-ink outline-none"
+        />
+      </div>
+      {unused.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-ink-muted">Existing:</span>
+          {unused.map((s) => (
+            <button
+              key={s}
+              onClick={() => add(s)}
+              className="rounded-full border border-line bg-paper px-2 py-0.5 text-[11px] font-medium text-ink-soft hover:bg-brand-50 hover:text-brand-700"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Bulk-apply a tag to several selected students at once.
+function BulkTagModal({
+  ids,
+  existingTags,
+  onClose,
+  onDone,
+}: {
+  ids: string[];
+  existingTags: string[];
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [tags, setTags] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [mode, setMode] = useState<"add" | "remove">("add");
+
+  async function apply() {
+    if (tags.length === 0) return;
+    setSaving(true);
+    try {
+      await adminFetch("/api/students", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          mode === "add" ? { ids, add: tags } : { ids, remove: tags }
+        ),
+      });
+      onDone();
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal title={`Tag ${ids.length} student${ids.length === 1 ? "" : "s"}`} onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-sm text-ink-muted">
+          Group students who start together into a cohort. Add or remove tags for
+          all selected students at once.
+        </p>
+        <div className="inline-flex rounded-lg border border-line bg-paper p-0.5">
+          <button
+            onClick={() => setMode("add")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              mode === "add" ? "bg-brand-600 text-white" : "text-ink-soft"
+            }`}
+          >
+            Add tags
+          </button>
+          <button
+            onClick={() => setMode("remove")}
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+              mode === "remove" ? "bg-brand-600 text-white" : "text-ink-soft"
+            }`}
+          >
+            Remove tags
+          </button>
+        </div>
+        <Field label={mode === "add" ? "Tags to add" : "Tags to remove"}>
+          <TagEditor tags={tags} setTags={setTags} suggestions={existingTags} />
+        </Field>
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={apply} disabled={saving || tags.length === 0} data-testid="apply-bulk-tag">
+            {saving ? <Spinner /> : null}{" "}
+            {mode === "add" ? "Add to selected" : "Remove from selected"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
   );
 }

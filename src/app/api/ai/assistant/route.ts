@@ -29,10 +29,17 @@ export const maxDuration = 60;
 type Action = {
   label: string;
   why: string;
+  // Optional visual hints used by the student dashboard card grid.
+  icon?: string; // lucide slug, e.g. "flame", "target", "rotate-ccw"
+  tone?: "brand" | "green" | "amber" | "violet"; // card accent
   target: {
     tab?: string;
     lessonId?: string;
     studentId?: string;
+    // open_lesson  -> open the lesson at the default (Lesson) tab
+    // open_practice-> open the lesson straight on its Practice tab
+    // review_plan  -> open the student's personalized study plan
+    // none         -> non-navigating encouragement card
     action?: string;
   };
 };
@@ -285,61 +292,166 @@ async function studentAssistant(supabase: any, studentId: string) {
       ? "They're having a hard time (low time in the app, slow on exams, or low accuracy). Be extra warm, reassuring, and low-pressure. Suggest a small, easy win to rebuild momentum. Never make them feel behind."
       : "They're making steady progress. Keep them consistent and encouraged.";
 
-  const actions: Action[] = [];
+  // Group unfinished lessons by section so we can recommend targeted next steps.
+  const allLessons = lessons || [];
+  const allProgress = progress || [];
+  const weakAreas: string[] = student.weak_areas || [];
+  // Lessons the student scored poorly on (a real "review your weak spot" target).
+  const lowScored = allProgress
+    .filter((p: any) => p.completed && typeof p.score === "number" && p.score < 70)
+    .sort((a: any, b: any) => (a.score ?? 0) - (b.score ?? 0));
+  const lowScoredLesson = lowScored.length
+    ? allLessons.find((l: any) => l.id === lowScored[0].lesson_id)
+    : null;
+  // A lesson whose topic matches one of the student's weak areas (best target).
+  const weakLesson =
+    notDone.find((l: any) =>
+      weakAreas.some((w) =>
+        `${l.topic} ${l.title} ${l.section}`.toLowerCase().includes(String(w).toLowerCase())
+      )
+    ) || null;
+  const mathNext = notDone.find((l: any) => l.section === "Math") || null;
+  const verbalNext =
+    notDone.find((l: any) => l.section && l.section !== "Math") || null;
+
+  // ---- rule-based set: always yields several distinct, ACTIONABLE cards ----
+  // Each card maps to a concrete action the dashboard can execute on click.
+  const rule: Action[] = [];
+  const usedLessonIds = new Set<string>();
+  const pushLesson = (
+    lesson: any,
+    label: string,
+    why: string,
+    action: string,
+    icon: string,
+    tone: Action["tone"]
+  ) => {
+    if (!lesson || usedLessonIds.has(lesson.id)) return;
+    usedLessonIds.add(lesson.id);
+    rule.push({ label, why, icon, tone, target: { lessonId: lesson.id, action } });
+  };
+
+  // 1) Continue where they left off (or first lesson).
   if (fallbackLesson) {
-    actions.push({
-      label: `Continue “${fallbackLesson.title}”`,
+    pushLesson(
+      fallbackLesson,
+      `Continue "${fallbackLesson.title}"`,
+      mood === "struggling"
+        ? "A small step forward. You've got this."
+        : "Pick up right where you left off.",
+      "open_lesson",
+      "book-open",
+      "brand"
+    );
+  }
+  // 2) Target a weak area with a matching lesson (jump straight into practice).
+  if (weakLesson) {
+    pushLesson(
+      weakLesson,
+      `Strengthen ${weakLesson.section}`,
+      `Practice "${weakLesson.title}" - one of your focus areas.`,
+      "open_practice",
+      "target",
+      "violet"
+    );
+  }
+  // 3) Redo a lesson you scored low on (real retry of a weak spot).
+  if (lowScoredLesson) {
+    pushLesson(
+      lowScoredLesson,
+      `Retry "${lowScoredLesson.title}"`,
+      `You scored ${lowScored[0].score}% here. Another pass will lift it.`,
+      "open_practice",
+      "rotate-ccw",
+      "amber"
+    );
+  }
+  // 4) Balance sections: offer Math and verbal next topics.
+  pushLesson(
+    mathNext,
+    `Sharpen Math: "${mathNext?.title}"`,
+    "Keep your Math momentum with the next topic.",
+    "open_lesson",
+    "calculator",
+    "brand"
+  );
+  pushLesson(
+    verbalNext,
+    `Reading & Writing: "${verbalNext?.title}"`,
+    "Balance your prep with a verbal lesson.",
+    "open_lesson",
+    "glasses",
+    "green"
+  );
+  // 5) Review the personalized study plan (real navigation if one exists).
+  if (student.study_plan) {
+    rule.push({
+      label: "Open your study plan",
+      why: "See the path your tutor mapped to your target score.",
+      icon: "calendar-check",
+      tone: "green",
+      target: { action: "review_plan" },
+    });
+  }
+  // Encouragement card to round out the set when little else is available.
+  if (rule.length < 3) {
+    rule.push({
+      label:
+        mood === "thriving"
+          ? "Keep your streak alive"
+          : mood === "struggling"
+          ? "One small win today"
+          : "Keep your momentum",
       why:
-        mood === "struggling"
-          ? "A small step forward — you've got this."
-          : "Pick up right where you left off.",
-      target: { lessonId: fallbackLesson.id, action: "open_lesson" },
-    });
-  } else if ((lessons || []).length) {
-    actions.push({
-      label: "Review a past lesson",
-      why: "Revisit one to keep your skills sharp.",
-      target: { lessonId: (lessons || [])[0].id, action: "open_lesson" },
-    });
-  }
-
-  try {
-    const system =
-      "You are a warm, encouraging study coach for one student. Suggest the 1-2 best things for them to do next right now, and adapt your TONE to how they're doing. Be specific and friendly. Never mention AI. Return JSON only.";
-    const user = `Student: ${student.name}. Target score: ${student.target_score}. Weak areas: ${(student.weak_areas || []).join(", ") || "none noted"}.
-State: ${mood.toUpperCase()}. ${toneGuide}
-Study so far: ${Math.round(breakdown.totalSeconds / 60)} min total, ${breakdown.lessonsOpened} lessons opened, ${doneIds.size} completed, practice accuracy ${accuracy ?? "n/a"}%, ${Math.round(examShare * 100)}% of time on exams, ${breakdown.daysSinceActive ?? 0} days since last active.
-Unfinished lessons: ${notDone.map((l: any) => `${l.id} | ${l.title} (${l.section})`).join("; ") || "none"}.
-
-Return STRICT JSON:
-{ "actions": [ { "label": "<=6 words friendly", "why": "one short, encouraging reason matched to their state", "lessonId": "<id of lesson to open, or null>" } ] }
-Return 1-2 actions.`;
-    const ai = parseJsonFromModel(await aiComplete(system, user, { json: true, temperature: 0.6 }));
-    const cleaned: Action[] = (ai?.actions || [])
-      .filter((a: any) => a && a.label)
-      .map((a: any) => {
-        const valid =
-          a.lessonId && (lessons || []).find((l: any) => l.id === a.lessonId);
-        return {
-          label: String(a.label).slice(0, 60),
-          why: String(a.why || "").slice(0, 120),
-          target: valid
-            ? { lessonId: a.lessonId, action: "open_lesson" }
-            : { action: "none" },
-        };
-      })
-      .slice(0, 2);
-    if (cleaned.length) return NextResponse.json({ actions: cleaned, mood });
-  } catch {
-    /* fall through */
-  }
-
-  if (!actions.length) {
-    actions.push({
-      label: "Keep your streak going",
-      why: "Great work so far — a short session keeps momentum.",
+        mood === "thriving"
+          ? "You're on a roll. A short session keeps it going."
+          : "Even ten focused minutes moves you forward.",
+      icon: mood === "thriving" ? "trophy" : mood === "struggling" ? "heart" : "flame",
+      tone: mood === "thriving" ? "green" : mood === "struggling" ? "amber" : "brand",
       target: { action: "none" },
     });
   }
-  return NextResponse.json({ actions, mood });
+
+  // ---- model pass: re-rank + phrase the labels/reasons warmly --------------
+  // The model only relabels existing, already-validated actions (so every card
+  // stays truly actionable). It cannot invent new lesson targets.
+  try {
+    const catalog = rule.map((a, i) => ({
+      i,
+      kind: a.target.action,
+      lessonId: a.target.lessonId || null,
+      currentLabel: a.label,
+    }));
+    const system =
+      "You are a warm, encouraging study coach for one student. You are given a fixed list of recommended actions (each already tied to a real lesson or screen). Rewrite each action's short label and one-line reason so it feels personal, specific, and motivating, adapting the TONE to how the student is doing. Keep the SAME order and the SAME number of items. Never invent new actions. Never mention AI. Return JSON only.";
+    const user = `Student: ${student.name}. Target score: ${student.target_score}. Weak areas: ${weakAreas.join(", ") || "none noted"}.
+State: ${mood.toUpperCase()}. ${toneGuide}
+Study so far: ${Math.round(breakdown.totalSeconds / 60)} min total, ${breakdown.lessonsOpened} lessons opened, ${doneIds.size} completed, practice accuracy ${accuracy ?? "n/a"}%, ${breakdown.daysSinceActive ?? 0} days since last active.
+Actions to rephrase (keep order, keep count): ${JSON.stringify(catalog)}
+
+Return STRICT JSON:
+{ "actions": [ { "i": <original index>, "label": "<=6 words, motivating", "why": "one short, encouraging reason matched to their state" } ] }`;
+    const ai = parseJsonFromModel(
+      await aiComplete(system, user, { json: true, temperature: 0.6 })
+    );
+    const byIndex = new Map<number, { label: string; why: string }>();
+    for (const a of ai?.actions || []) {
+      const i = Number(a?.i);
+      if (Number.isInteger(i) && i >= 0 && i < rule.length && a?.label) {
+        byIndex.set(i, {
+          label: String(a.label).slice(0, 60),
+          why: String(a.why || "").slice(0, 120),
+        });
+      }
+    }
+    const merged = rule.map((a, i) => {
+      const r = byIndex.get(i);
+      return r ? { ...a, label: r.label, why: r.why } : a;
+    });
+    return NextResponse.json({ actions: merged.slice(0, 5), mood });
+  } catch {
+    /* fall through to rule-based */
+  }
+
+  return NextResponse.json({ actions: rule.slice(0, 5), mood });
 }

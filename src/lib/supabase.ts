@@ -39,6 +39,8 @@ export type Student = {
   created_at: string;
   // Engagement & insight fields (maintained from the activity log)
   labels: string[];
+  // Teacher-assigned cohort tags (e.g. "Spring Cohort"). Free-form, multi.
+  tags: string[];
   insights: Record<string, any>;
   recommendations: Record<string, any>;
   total_study_seconds: number;
