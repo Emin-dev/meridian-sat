@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Card, Spinner } from "@/components/ui";
-import { DecorMediaProvider, DecorMedia } from "@/components/DecorMedia";
 import { ShieldCheck, ArrowRight } from "lucide-react";
 
 // Minimalist, ad-style landing page for MeridianSAT.
@@ -86,22 +85,6 @@ export default function Home() {
         <p className="mt-4 max-w-sm text-base text-ink-soft animate-fadeUp">
           Lessons built around your goals. Enter your code to begin.
         </p>
-
-        {/* Brand intro motion. Guests see it with no controls; an admin can hide
-            it app-wide from the Tutor settings, and that global hide applies here too. */}
-        <DecorMediaProvider role="guest">
-          <DecorMedia
-            mediaKey="intro"
-            kind="video"
-            src="/decor/poster.webp"
-            sources={[
-              { src: "/decor/intro.webm", type: "video/webm" },
-              { src: "/decor/intro.mp4", type: "video/mp4" },
-            ]}
-            alt="MeridianSAT — personalized SAT prep"
-            className="mt-9 w-full max-w-sm border border-line shadow-card animate-fadeUp"
-          />
-        </DecorMediaProvider>
 
         <Card className="mt-6 w-full max-w-sm p-6 animate-fadeUp">
           <div className="relative">
