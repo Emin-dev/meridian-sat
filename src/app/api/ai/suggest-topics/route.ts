@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 30;
 
 // POST /api/ai/suggest-topics  body: { studentId?, section }
 // Suggests relevant SAT topics for the section, personalized to the student's weak areas.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId, section } = await req.json();
     let weak: string[] = [];

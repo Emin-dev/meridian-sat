@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiComplete } from "@/lib/deepseek";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 45;
 
@@ -7,6 +8,9 @@ export const maxDuration = 45;
 // action: "improve" | "expand" | "fix" | "shorten"
 // Generic AI text helper used by the small "AI" button next to text fields.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { text, action = "improve", context = "" } = await req.json();
     const verbs: Record<string, string> = {

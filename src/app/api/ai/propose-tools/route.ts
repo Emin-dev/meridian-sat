@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { summarizeEvents } from "@/lib/insights";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 60;
 
@@ -91,6 +92,9 @@ const CATALOG = [
 const ALLOWED = new Map(CATALOG.map((c) => [c.key, c]));
 
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId } = await req.json();
     if (!studentId) {

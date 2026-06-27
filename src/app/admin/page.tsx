@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Logo, Button, Card, Input, Textarea, Badge, Spinner, AIButton } from "@/components/ui";
 import UsageMeter from "@/components/UsageMeter";
+import { adminFetch, setAdminToken } from "@/lib/adminClient";
 import type { Student, Prompt } from "@/lib/supabase";
 import {
   Users,
@@ -53,6 +54,8 @@ export default function AdminPage() {
         body: JSON.stringify({ password: pwd }),
       });
       if (res.ok) {
+        const d = await res.json().catch(() => ({}));
+        setAdminToken(d.token || null);
         setAuthed(true);
         loadAll();
       } else {
@@ -78,8 +81,8 @@ export default function AdminPage() {
   async function loadAll() {
     setLoading(true);
     const [s, pr] = await Promise.all([
-      fetch("/api/students").then((r) => r.json()),
-      fetch("/api/prompts").then((r) => r.json()),
+      adminFetch("/api/students").then((r) => r.json()),
+      adminFetch("/api/prompts").then((r) => r.json()),
     ]);
     const studs: Student[] = s.students || [];
     setStudents(studs);
@@ -91,8 +94,8 @@ export default function AdminPage() {
     const counts: Record<string, number> = {};
     try {
       const [reqRes, toolRes] = await Promise.all([
-        fetch("/api/lesson-requests?status=pending").then((r) => r.json()),
-        fetch("/api/student-tools?status=pending").then((r) => r.json()),
+        adminFetch("/api/lesson-requests?status=pending").then((r) => r.json()),
+        adminFetch("/api/student-tools?status=pending").then((r) => r.json()),
       ]);
       const reqs = reqRes.requests || [];
       const tools = toolRes.tools || [];
@@ -406,7 +409,7 @@ function StudentCreateModal({
   async function save() {
     setSaving(true);
     try {
-      const res = await fetch("/api/students", {
+      const res = await adminFetch("/api/students", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -438,7 +441,7 @@ function StudentCreateModal({
               label="Suggest"
               title="Suggest an access code from the name"
               onRun={async () => {
-                const res = await fetch("/api/ai/suggest-code", {
+                const res = await adminFetch("/api/ai/suggest-code", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ name: form.name }),
@@ -492,7 +495,7 @@ function SettingsView({ prompts, reload }: { prompts: Prompt[]; reload: () => vo
   const [saved, setSaved] = useState<string | null>(null);
 
   async function save(id: string) {
-    await fetch("/api/prompts", {
+    await adminFetch("/api/prompts", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, content: drafts[id] }),
@@ -528,7 +531,7 @@ function SettingsView({ prompts, reload }: { prompts: Prompt[]; reload: () => vo
                   title="Refine this style"
                   onRun={async () => {
                     const current = drafts[p.id] ?? p.content;
-                    const res = await fetch("/api/ai/improve", {
+                    const res = await adminFetch("/api/ai/improve", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({

@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete } from "@/lib/deepseek";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 45;
 
 // POST /api/ai/summarize  body: { studentId }
 // Auto-writes a progress note/summary for a student from their lessons + scores.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId } = await req.json();
     const supabase = getSupabaseAdmin();

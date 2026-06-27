@@ -18,6 +18,7 @@ import {
   Glasses,
   type LucideIcon,
 } from "lucide-react";
+import { adminFetch } from "@/lib/adminClient";
 
 // Map the catalog icon slugs to lucide components.
 const ICONS: Record<string, LucideIcon> = {
@@ -61,7 +62,7 @@ export default function AdminTools({
   async function load() {
     setLoading(true);
     try {
-      const d = await fetch("/api/student-tools").then((r) => r.json());
+      const d = await adminFetch("/api/student-tools").then((r) => r.json());
       const all = d.tools || [];
       setTools(studentId ? all.filter((t: any) => t.student_id === studentId) : all);
     } finally {
@@ -80,7 +81,7 @@ export default function AdminTools({
     setProposing(true);
     setNote("");
     try {
-      const d = await fetch("/api/ai/propose-tools", {
+      const d = await adminFetch("/api/ai/propose-tools", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: proposeFor }),
@@ -101,7 +102,7 @@ export default function AdminTools({
   async function act(id: string, action: "approve" | "deny") {
     setBusy(id);
     try {
-      await fetch(`/api/student-tools/${id}`, {
+      await adminFetch(`/api/student-tools/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action }),

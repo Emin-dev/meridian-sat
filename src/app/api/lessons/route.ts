@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminauth";
 
 // GET /api/lessons?studentId=...  -> lessons for a student (or all if omitted)
 export async function GET(req: NextRequest) {
@@ -18,6 +19,9 @@ export async function GET(req: NextRequest) {
 
 // POST /api/lessons -> create a lesson manually (admin)
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const body = await req.json();
     const supabase = getSupabaseAdmin();

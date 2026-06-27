@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminauth";
 
 // GET /api/settings -> all settings as key/value
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.from("settings").select("*");
@@ -17,6 +21,9 @@ export async function GET() {
 
 // PATCH /api/settings -> update a setting (admin)
 export async function PATCH(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { key, value } = await req.json();
     const supabase = getSupabaseAdmin();

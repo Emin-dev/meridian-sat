@@ -21,6 +21,7 @@ import AdminInsights from "@/components/AdminInsights";
 import RichMedia from "@/components/RichMedia";
 import UsageMeter from "@/components/UsageMeter";
 import type { Lesson, Student } from "@/lib/supabase";
+import { adminFetch } from "@/lib/adminClient";
 import {
   ArrowLeft,
   BookOpen,
@@ -54,18 +55,19 @@ export default function StudentDetailPage() {
 
   async function loadStudent() {
     const [sRes, lRes] = await Promise.all([
-      fetch("/api/students").then((r) => r.json()),
-      fetch("/api/lessons").then((r) => r.json()),
+      adminFetch(`/api/students/${id}`).then((r) => r.json()),
+      adminFetch(`/api/lessons?studentId=${id}`).then((r) => r.json()),
     ]);
-    const found = (sRes.students || []).find((s: Student) => s.id === id) || null;
-    setStudent(found);
-    setLessons((lRes.lessons || []).filter((l: Lesson) => l.student_id === id));
+    setStudent(sRes.student || null);
+    setLessons(lRes.lessons || []);
   }
 
   useEffect(() => {
-    // Verify admin session by hitting an admin-only endpoint.
+    // Verify admin session by hitting an admin-only endpoint. The in-memory
+    // admin token is set at login on /admin and persists across client-side
+    // navigation (router.push). A hard refresh loses it -> redirect to /admin.
     (async () => {
-      const r = await fetch("/api/students");
+      const r = await adminFetch("/api/students");
       if (r.ok) {
         setAuthed(true);
         await loadStudent();
@@ -183,7 +185,7 @@ export default function StudentDetailPage() {
           lesson={editing}
           onClose={() => setEditing(null)}
           onSave={async (patch) => {
-            await fetch(`/api/lessons/${editing.id}`, {
+            await adminFetch(`/api/lessons/${editing.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(patch),
@@ -250,7 +252,7 @@ function LessonsAndPlan({
                     variant="danger"
                     onClick={async () => {
                       if (!confirm("Delete this lesson?")) return;
-                      await fetch(`/api/lessons/${l.id}`, { method: "DELETE" });
+                      await adminFetch(`/api/lessons/${l.id}`, { method: "DELETE" });
                       reload();
                     }}
                   >
@@ -280,7 +282,7 @@ function GenerateLesson({ student, reload }: { student: Student; reload: () => v
     setMsg("");
     setErr("");
     try {
-      const res = await fetch("/api/generate-lesson", {
+      const res = await adminFetch("/api/generate-lesson", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id, section, topic, difficulty }),
@@ -335,7 +337,7 @@ function GenerateLesson({ student, reload }: { student: Student; reload: () => v
             label="Suggest topics"
             title="Suggest relevant SAT topics"
             onRun={async () => {
-              const res = await fetch("/api/ai/suggest-topics", {
+              const res = await adminFetch("/api/ai/suggest-topics", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ studentId: student.id, section }),
@@ -416,7 +418,7 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
     setSaving(true);
     setSaved(false);
     try {
-      await fetch(`/api/students/${student.id}`, {
+      await adminFetch(`/api/students/${student.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -438,7 +440,7 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
   async function grantBonus() {
     setGranting(true);
     try {
-      await fetch("/api/ai-usage", {
+      await adminFetch("/api/ai-usage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id, grant }),
@@ -451,7 +453,7 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
 
   async function remove() {
     if (!confirm(`Delete ${student.name} and all their data?`)) return;
-    await fetch(`/api/students/${student.id}`, { method: "DELETE" });
+    await adminFetch(`/api/students/${student.id}`, { method: "DELETE" });
     router.push("/admin");
   }
 
@@ -513,7 +515,7 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
                 label="Auto-write"
                 title="Auto-write a progress note from lessons & scores"
                 onRun={async () => {
-                  const res = await fetch("/api/ai/summarize", {
+                  const res = await adminFetch("/api/ai/summarize", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ studentId: student.id }),
@@ -527,7 +529,7 @@ function ProfileAndAccess({ student, reload }: { student: Student; reload: () =>
                   label="Improve"
                   title="Polish this note"
                   onRun={async () => {
-                    const res = await fetch("/api/ai/improve", {
+                    const res = await adminFetch("/api/ai/improve", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({

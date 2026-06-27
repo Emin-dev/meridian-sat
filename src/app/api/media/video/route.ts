@@ -9,6 +9,7 @@ import {
 } from "@/lib/media";
 import { generateVideoBlueprint } from "@/lib/mediagen";
 import type { PodcastTurn } from "@/lib/media";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -31,6 +32,9 @@ async function getStudent(id: string) {
  * body: { studentId, topic, section?, lessonId?, blueprintOnly? }
  */
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const body = await req.json();
     const { studentId, topic, section, lessonId, blueprintOnly } = body;

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminauth";
 
 // PATCH /api/student-tools/:id
 // body: { action: "approve" | "deny" | "edit" }
@@ -14,6 +15,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const body = await req.json();
     const action = body?.action;
@@ -56,9 +60,12 @@ export async function PATCH(
 
 // DELETE /api/student-tools/:id  -> remove a proposal entirely
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("student_tools").delete().eq("id", params.id);

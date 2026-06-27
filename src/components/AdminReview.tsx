@@ -16,6 +16,7 @@ import {
   Sparkles,
   UserCog,
 } from "lucide-react";
+import { adminFetch } from "@/lib/adminClient";
 
 type ReqWithStudent = LessonRequest & {
   students?: { name: string; access_code: string; status: string };
@@ -39,8 +40,8 @@ export default function AdminReview({
   async function load() {
     setLoading(true);
     const [rRes, sRes] = await Promise.all([
-      fetch("/api/lesson-requests?status=pending"),
-      fetch("/api/students"),
+      adminFetch("/api/lesson-requests?status=pending"),
+      adminFetch("/api/students"),
     ]);
     const rData = await rRes.json();
     const sData = await sRes.json();
@@ -150,7 +151,7 @@ function StuckRow({
   async function build() {
     setBusy(true);
     try {
-      const res = await fetch("/api/lesson-requests/generate", {
+      const res = await adminFetch("/api/lesson-requests/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id }),
@@ -207,7 +208,7 @@ function ReviewCard({
   async function act(action: string, body: Record<string, any> = {}) {
     setBusy(action);
     try {
-      const res = await fetch(`/api/lesson-requests/${request.id}`, {
+      const res = await adminFetch(`/api/lesson-requests/${request.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ...body }),
@@ -230,7 +231,7 @@ function ReviewCard({
     setChat((c) => [...c, { role: "teacher", content: mine }]);
     setChatMsg("");
     try {
-      const res = await fetch(`/api/lesson-requests/${request.id}`, {
+      const res = await adminFetch(`/api/lesson-requests/${request.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "discuss", message: mine }),

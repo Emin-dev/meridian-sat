@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminauth";
 
 // GET /api/lessons/:id
 export async function GET(
@@ -25,6 +26,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const body = await req.json();
     const supabase = getSupabaseAdmin();
@@ -56,9 +60,12 @@ export async function PATCH(
 
 // DELETE /api/lessons/:id
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const supabase = getSupabaseAdmin();
     const { error } = await supabase.from("lessons").delete().eq("id", params.id);

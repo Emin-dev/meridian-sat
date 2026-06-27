@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { requireAdmin } from "@/lib/adminauth";
 
 // GET /api/prompts -> all editable AI prompts (admin)
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase.from("prompts").select("*").order("id");
@@ -15,6 +19,9 @@ export async function GET() {
 
 // PATCH /api/prompts -> update one prompt's content (admin controls the AI)
 export async function PATCH(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { id, content, label } = await req.json();
     const supabase = getSupabaseAdmin();

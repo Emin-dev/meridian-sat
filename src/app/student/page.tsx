@@ -89,11 +89,11 @@ function StudentInner() {
     }
     setLoading(true);
     const [sRes, lRes, pRes] = await Promise.all([
-      fetch("/api/students").then((r) => r.json()),
+      fetch(`/api/students/${studentId}`).then((r) => r.json()),
       fetch(`/api/lessons?studentId=${studentId}`).then((r) => r.json()),
       fetch(`/api/progress?studentId=${studentId}`).then((r) => r.json()),
     ]);
-    const me = (sRes.students || []).find((s: Student) => s.id === studentId);
+    const me: Student | undefined = sRes.student || undefined;
     if (!me) {
       router.push("/");
       return;

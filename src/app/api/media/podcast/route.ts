@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import { synthesizePodcast, uploadToStorage, recordAsset, hasGeminiKey } from "@/lib/media";
 import { generatePodcastScript } from "@/lib/mediagen";
 import type { PodcastTurn } from "@/lib/media";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -19,6 +20,9 @@ async function getStudent(id: string) {
 //   - turns provided   -> synthesize audio from an (edited) script
 //   - neither          -> write a script AND synthesize in one shot
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const body = await req.json();
     const { studentId, topic, section, lessonId, scriptOnly } = body;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import { summarizeEvents, quickLabel } from "@/lib/insights";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 60;
 
@@ -14,6 +15,9 @@ export const maxDuration = 60;
 // recommendations / next actions. Persists the result on the student row so the
 // admin list is instant afterward.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId } = await req.json();
     if (!studentId) {

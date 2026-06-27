@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchYouTube, recordAsset } from "@/lib/media";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const runtime = "nodejs";
 
 // GET /api/media/youtube?q=...  -> search results to pick from
 export async function GET(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const q = req.nextUrl.searchParams.get("q");
     if (!q) return NextResponse.json({ error: "q required" }, { status: 400 });
@@ -18,6 +22,9 @@ export async function GET(req: NextRequest) {
 // POST /api/media/youtube  body: { studentId, video:{videoId,title,channel,thumbnail,url}, lessonId? }
 // Saves a curated YouTube pick to the student's media library.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId, video, lessonId } = await req.json();
     if (!studentId || !video?.url) {

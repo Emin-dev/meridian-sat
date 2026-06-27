@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { adminToken } from "@/lib/adminauth";
 
 // POST /api/admin-auth -> verify the admin password (set in env)
 export async function POST(req: NextRequest) {
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
       );
     }
     if (password === expected) {
-      return NextResponse.json({ ok: true });
+      return NextResponse.json({ ok: true, token: adminToken() });
     }
     return NextResponse.json({ error: "Incorrect password." }, { status: 401 });
   } catch (err: any) {

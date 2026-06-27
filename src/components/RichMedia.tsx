@@ -19,6 +19,7 @@ import {
   X,
   Download,
 } from "lucide-react";
+import { adminFetch } from "@/lib/adminClient";
 
 type MediaAsset = {
   id: string;
@@ -53,7 +54,7 @@ export default function RichMedia({ student }: { student: Student }) {
   async function load() {
     setLoading(true);
     try {
-      const r = await fetch(`/api/media?studentId=${student.id}`);
+      const r = await adminFetch(`/api/media?studentId=${student.id}`);
       const d = await r.json();
       setAssets(d.assets || []);
     } finally {
@@ -68,7 +69,7 @@ export default function RichMedia({ student }: { student: Student }) {
 
   async function remove(id: string) {
     if (!confirm("Delete this media item?")) return;
-    await fetch(`/api/media?id=${id}`, { method: "DELETE" });
+    await adminFetch(`/api/media?id=${id}`, { method: "DELETE" });
     setAssets((a) => a.filter((x) => x.id !== id));
   }
 
@@ -171,7 +172,7 @@ function ImageTool({ student, onDone }: { student: Student; onDone: () => void }
     setBusy(true);
     setErr("");
     try {
-      const r = await fetch("/api/media/image", {
+      const r = await adminFetch("/api/media/image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id, topic, section, prompt }),
@@ -241,7 +242,7 @@ function PodcastTool({ student, onDone }: { student: Student; onDone: () => void
     setErr("");
     setNeedsKey(false);
     try {
-      const r = await fetch("/api/media/podcast", {
+      const r = await adminFetch("/api/media/podcast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id, topic, section, scriptOnly: true }),
@@ -263,7 +264,7 @@ function PodcastTool({ student, onDone }: { student: Student; onDone: () => void
     setStage("audio");
     setErr("");
     try {
-      const r = await fetch("/api/media/podcast", {
+      const r = await adminFetch("/api/media/podcast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -382,7 +383,7 @@ function VideoTool({ student, onDone }: { student: Student; onDone: () => void }
     setErr("");
     setNote("");
     try {
-      const r = await fetch("/api/media/video", {
+      const r = await adminFetch("/api/media/video", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: student.id, topic, section }),
@@ -443,7 +444,7 @@ function YouTubeTool({ student, onDone }: { student: Student; onDone: () => void
     setBusy(true);
     setErr("");
     try {
-      const r = await fetch(`/api/media/youtube?q=${encodeURIComponent(q)}`);
+      const r = await adminFetch(`/api/media/youtube?q=${encodeURIComponent(q)}`);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || "Failed");
       setResults(d.results || []);
@@ -455,7 +456,7 @@ function YouTubeTool({ student, onDone }: { student: Student; onDone: () => void
   }
 
   async function save(video: any) {
-    await fetch("/api/media/youtube", {
+    await adminFetch("/api/media/youtube", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ studentId: student.id, video }),

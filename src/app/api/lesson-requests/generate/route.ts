@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateDraftPackage, fallbackPackage } from "@/lib/lessongen";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 60;
 
@@ -14,6 +15,9 @@ export const maxDuration = 60;
 // would otherwise leave them stuck in the "preparing" state with nothing in
 // the admin review queue.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId } = await req.json();
     if (!studentId) {

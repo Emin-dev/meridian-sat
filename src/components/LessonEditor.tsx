@@ -5,6 +5,7 @@ import { Button, Card, Input, Textarea, Select, Badge, AIButton } from "@/compon
 import Markdown from "@/components/Markdown";
 import type { Lesson, Question } from "@/lib/supabase";
 import { Plus, Trash2, Eye, Save, X } from "lucide-react";
+import { adminFetch } from "@/lib/adminClient";
 
 // Full admin lesson editor — edit EVERYTHING the student sees.
 export default function LessonEditor({
@@ -26,7 +27,7 @@ export default function LessonEditor({
 
   // Run an AI text action on a piece of text and return the result.
   async function aiText(text: string, action: string, context: string) {
-    const res = await fetch("/api/ai/improve", {
+    const res = await adminFetch("/api/ai/improve", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, action, context }),

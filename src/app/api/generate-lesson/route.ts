@@ -7,6 +7,7 @@ import {
   parseJsonFromModel,
 } from "@/lib/deepseek";
 import { MATH_AUTHORING } from "@/lib/mathprompt";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 60; // allow time for the model
 
@@ -14,6 +15,9 @@ export const maxDuration = 60; // allow time for the model
 // body: { studentId, section, topic, difficulty }
 // Generates a personalized lesson with DeepSeek V4 Pro and saves it.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId, section, topic, difficulty } = await req.json();
     if (!studentId || !section || !topic) {

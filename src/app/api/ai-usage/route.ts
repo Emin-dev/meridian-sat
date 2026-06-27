@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { peekUsage, grantBonus } from "@/lib/ratelimit";
+import { requireAdmin } from "@/lib/adminauth";
 
 // GET /api/ai-usage?studentId=...  -> current daily usage status for a student
 // Used by both the student's screen (their meter) and the admin student page.
@@ -19,6 +20,8 @@ export async function GET(req: NextRequest) {
 // POST /api/ai-usage  body: { studentId, grant }  (admin only, behind admin UI)
 // Grant a student extra requests for today; clears any active block.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
   try {
     const { studentId, grant } = await req.json();
     if (!studentId || typeof grant !== "number" || grant <= 0) {

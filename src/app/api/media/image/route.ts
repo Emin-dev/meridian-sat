@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateImage, uploadToStorage, recordAsset } from "@/lib/media";
 import { refineImagePrompt } from "@/lib/mediagen";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -10,6 +11,9 @@ export const maxDuration = 60;
 // body: { studentId, topic, section?, prompt?, lessonId? }
 // Generates an educational diagram (free, Pollinations), stores it, records it.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { studentId, topic, section, prompt, lessonId } = await req.json();
     if (!studentId || (!topic && !prompt)) {

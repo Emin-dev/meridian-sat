@@ -12,6 +12,7 @@ import {
   RefreshCw,
   Sparkles,
 } from "lucide-react";
+import { adminFetch } from "@/lib/adminClient";
 
 // Admin insights: at a glance, who is studying and who isn't, how much time each
 // student spends, plus AI-generated labels, key points and recommendations.
@@ -70,7 +71,7 @@ export default function AdminInsights({
   async function refresh(id: string) {
     setRefreshing(id);
     try {
-      await fetch("/api/ai/insights", {
+      await adminFetch("/api/ai/insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ studentId: id }),
@@ -85,7 +86,7 @@ export default function AdminInsights({
     setRefreshingAll(true);
     try {
       for (const s of students) {
-        await fetch("/api/ai/insights", {
+        await adminFetch("/api/ai/insights", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ studentId: s.id }),

@@ -45,11 +45,9 @@ export default function Preparing({
       if (polling.current) return;
       polling.current = true;
       try {
-        const res = await fetch("/api/students");
+        const res = await fetch(`/api/students/${student.id}`);
         const data = await res.json();
-        const me = (data.students || []).find(
-          (s: Student) => s.id === student.id
-        );
+        const me: Student | undefined = data.student || undefined;
         if (me && me.status === "active" && !stopped) {
           onReady(me);
         }

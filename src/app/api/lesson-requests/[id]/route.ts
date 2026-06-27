@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateDraftPackage } from "@/lib/lessongen";
 import { aiComplete } from "@/lib/deepseek";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 60;
 
 // GET /api/lesson-requests/:id  -> single request with student
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
@@ -36,6 +40,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const body = await req.json();
     const action = body.action;

@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { aiComplete } from "@/lib/deepseek";
+import { requireAdmin } from "@/lib/adminauth";
 
 export const maxDuration = 30;
 
 // POST /api/ai/suggest-code  body: { name }
 // Suggests a memorable, clean access code based on the student's name.
 export async function POST(req: NextRequest) {
+  const unauth = requireAdmin(req);
+  if (unauth) return unauth;
+
   try {
     const { name } = await req.json();
     const system =
