@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo, Button, Card, Input, Textarea, Badge, Spinner, AIButton } from "@/components/ui";
+import { Logo, Button, Card, Input, Textarea, Badge, Spinner, AIButton, Select } from "@/components/ui";
 import UsageMeter from "@/components/UsageMeter";
 import AdminAnalytics from "@/components/AdminAnalytics";
 import { adminFetch, setAdminToken, restoreAdminSession } from "@/lib/adminClient";
@@ -27,9 +27,61 @@ import {
   X,
   CheckSquare,
   Square,
+  Sparkles,
 } from "lucide-react";
 
 type View = "overview" | "students" | "settings";
+
+/* ---- Prebuilt option lists for the New-student form ---- */
+const GRADE_OPTIONS = [
+  "9th grade",
+  "10th grade",
+  "11th grade",
+  "12th grade",
+  "Gap year",
+  "Homeschool",
+  "Adult learner",
+];
+
+// Aspirational SAT target scores — everyone aims high, so just the top
+// rounded options (no odd numbers like 1283).
+const TARGET_OPTIONS = [1600, 1550, 1500, 1450, 1400, 1300];
+
+// Official Digital SAT skills, grouped so the picker reads naturally.
+const WEAK_AREA_GROUPS: { group: string; items: string[] }[] = [
+  {
+    group: "Reading & Writing",
+    items: [
+      "Words in context",
+      "Text structure and purpose",
+      "Cross-text connections",
+      "Central ideas and details",
+      "Command of evidence",
+      "Inferences",
+      "Boundaries (punctuation)",
+      "Form, structure, and sense",
+      "Transitions",
+      "Rhetorical synthesis",
+    ],
+  },
+  {
+    group: "Math",
+    items: [
+      "Linear equations",
+      "Systems of equations",
+      "Nonlinear functions",
+      "Ratios, rates, and proportions",
+      "Percentages",
+      "Data analysis",
+      "Probability and statistics",
+      "Geometry and trigonometry",
+      "Quadratics",
+      "Exponents and radicals",
+    ],
+  },
+];
+const ALL_WEAK_AREAS = WEAK_AREA_GROUPS.flatMap((g) => g.items);
+
 
 export default function AdminPage() {
   const router = useRouter();
@@ -632,11 +684,41 @@ function StudentCreateModal({
     access_code: "",
     grade: "11th grade",
     target_score: 1400,
-    weak_areas: "",
     notes: "",
   });
+  // Weak areas are now a real multi-select (chips) instead of a comma string.
+  const [weakAreas, setWeakAreas] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [autoFilling, setAutoFilling] = useState(false);
+
+  // One click: AI fills everything except the name with a realistic profile.
+  async function autoFill() {
+    setAutoFilling(true);
+    try {
+      const res = await adminFetch("/api/ai/suggest-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: form.name }),
+      });
+      const d = await res.json();
+      const p = d.profile;
+      if (p) {
+        setForm((f) => ({
+          ...f,
+          access_code: p.access_code || f.access_code,
+          grade: GRADE_OPTIONS.includes(p.grade) ? p.grade : f.grade,
+          target_score: p.target_score || f.target_score,
+        }));
+        if (Array.isArray(p.weak_areas)) setWeakAreas(p.weak_areas);
+        if (p.cohort_tag && !tags.includes(p.cohort_tag)) {
+          setTags((t) => [...t, p.cohort_tag]);
+        }
+      }
+    } finally {
+      setAutoFilling(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -647,10 +729,7 @@ function StudentCreateModal({
         body: JSON.stringify({
           ...form,
           tags,
-          weak_areas: form.weak_areas
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean),
+          weak_areas: weakAreas,
         }),
       });
       const d = await res.json();
@@ -664,9 +743,33 @@ function StudentCreateModal({
   return (
     <Modal title="New student" onClose={onClose}>
       <div className="space-y-3">
+        {/* Name + prominent AI auto-fill */}
         <Field label="Name">
-          <Input value={form.name} onChange={(v) => setForm({ ...form, name: v })} />
+          <div className="flex gap-2">
+            <Input
+              value={form.name}
+              onChange={(v) => setForm({ ...form, name: v })}
+              className="flex-1"
+            />
+            <button
+              type="button"
+              onClick={autoFill}
+              disabled={autoFilling || !form.name}
+              title="Auto-fill the rest of this form with a realistic profile"
+              data-testid="auto-fill"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-brand-600 px-3.5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {autoFilling ? <Spinner className="text-white" /> : <Sparkles size={15} />}
+              Auto-fill
+            </button>
+          </div>
+          {!form.name && (
+            <p className="mt-1 text-xs text-ink-muted">
+              Type a name, then Auto-fill to suggest everything else.
+            </p>
+          )}
         </Field>
+
         <Field
           label="Access code (what the student types to log in)"
           action={
@@ -690,27 +793,35 @@ function StudentCreateModal({
             onChange={(v) => setForm({ ...form, access_code: v.toUpperCase() })}
           />
         </Field>
+
         <div className="grid grid-cols-2 gap-3">
           <Field label="Grade">
-            <Input value={form.grade} onChange={(v) => setForm({ ...form, grade: v })} />
+            <Select
+              value={form.grade}
+              onChange={(v) => setForm({ ...form, grade: v })}
+              options={GRADE_OPTIONS.map((g) => ({ value: g, label: g }))}
+            />
           </Field>
           <Field label="Target score">
-            <Input
-              type="number"
-              value={form.target_score}
+            <Select
+              value={String(form.target_score)}
               onChange={(v) => setForm({ ...form, target_score: Number(v) })}
+              options={TARGET_OPTIONS.map((t) => ({
+                value: String(t),
+                label: String(t),
+              }))}
             />
           </Field>
         </div>
-        <Field label="Weak areas (comma-separated)">
-          <Input
-            value={form.weak_areas}
-            onChange={(v) => setForm({ ...form, weak_areas: v })}
-          />
+
+        <Field label="Weak areas (tap to select)">
+          <MultiChipSelect selected={weakAreas} setSelected={setWeakAreas} />
         </Field>
+
         <Field label="Cohort tags (group students who start together)">
           <TagEditor tags={tags} setTags={setTags} suggestions={existingTags} />
         </Field>
+
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="ghost" onClick={onClose}>
             Cancel
@@ -721,6 +832,60 @@ function StudentCreateModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Grouped, tap-to-toggle chips for the official SAT skills. Replaces the old
+// comma-separated free-text input so picking weak areas is fast and consistent.
+function MultiChipSelect({
+  selected,
+  setSelected,
+}: {
+  selected: string[];
+  setSelected: (v: string[]) => void;
+}) {
+  function toggle(item: string) {
+    setSelected(
+      selected.includes(item)
+        ? selected.filter((s) => s !== item)
+        : [...selected, item]
+    );
+  }
+  return (
+    <div className="space-y-2.5 rounded-xl border border-line bg-paper/40 p-3">
+      {WEAK_AREA_GROUPS.map((g) => (
+        <div key={g.group}>
+          <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            {g.group}
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {g.items.map((item) => {
+              const on = selected.includes(item);
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  data-testid={`weak-${item}`}
+                  onClick={() => toggle(item)}
+                  className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
+                    on
+                      ? "border-brand-500 bg-brand-600 text-white"
+                      : "border-line bg-white text-ink hover:border-brand-300 hover:bg-brand-50"
+                  }`}
+                >
+                  {item}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      {selected.length > 0 && (
+        <p className="pt-0.5 text-[11px] text-ink-muted">
+          {selected.length} selected
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -881,8 +1046,12 @@ function TagEditor({
   function remove(t: string) {
     setTags(tags.filter((x) => x !== t));
   }
-
-  const unused = suggestions.filter((s) => !tags.includes(s));
+  // Toggle a suggestion on/off so the button always stays visible and gives
+  // clear feedback instead of vanishing once used.
+  function toggle(t: string) {
+    if (tags.includes(t)) remove(t);
+    else add(t);
+  }
 
   return (
     <div>
@@ -918,18 +1087,26 @@ function TagEditor({
           className="min-w-[120px] flex-1 bg-transparent px-1 py-0.5 text-sm text-ink outline-none"
         />
       </div>
-      {unused.length > 0 && (
+      {suggestions.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           <span className="text-[11px] text-ink-muted">Existing:</span>
-          {unused.map((s) => (
-            <button
-              key={s}
-              onClick={() => add(s)}
-              className="rounded-full border border-line bg-paper px-2 py-0.5 text-[11px] font-medium text-ink-soft hover:bg-brand-50 hover:text-brand-700"
-            >
-              + {s}
-            </button>
-          ))}
+          {suggestions.map((s) => {
+            const on = tags.includes(s);
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => toggle(s)}
+                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium transition ${
+                  on
+                    ? "border-brand-500 bg-brand-600 text-white"
+                    : "border-line bg-paper text-ink-soft hover:bg-brand-50 hover:text-brand-700"
+                }`}
+              >
+                {on ? <Check size={11} /> : <Plus size={11} />} {s}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
