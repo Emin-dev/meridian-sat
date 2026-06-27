@@ -8,26 +8,27 @@ export function Logo({ className = "" }: { className?: string }) {
       <svg
         width="28"
         height="28"
-        viewBox="0 0 32 32"
+        viewBox="0 0 64 64"
         fill="none"
         aria-label="MeridianSAT logo"
       >
-        <rect width="32" height="32" rx="9" fill="#1f4ced" />
-        {/* meridian: two minimalist comma forms */}
+        <rect width="64" height="64" rx="17" fill="#1f4ced" />
+        {/* compass: two-tone needle in a bezel ring */}
+        <circle cx="32" cy="32" r="20" stroke="white" strokeWidth="2" />
+        <path d="M32 14 L37 32 L32 32 Z M32 14 L27 32 L32 32 Z" fill="white" />
         <path
-          d="M12 10 C 9 13, 9 17, 12 19"
-          stroke="white"
-          strokeWidth="2.4"
-          strokeLinecap="round"
+          d="M32 50 L37 32 L32 32 Z M32 50 L27 32 L32 32 Z"
+          fill="white"
+          opacity="0.55"
         />
-        <circle cx="12.3" cy="20.4" r="1.5" fill="white" />
-        <path
-          d="M20 13 C 23 16, 23 20, 20 23"
+        <circle
+          cx="32"
+          cy="32"
+          r="2.6"
+          fill="#1f4ced"
           stroke="white"
-          strokeWidth="2.4"
-          strokeLinecap="round"
+          strokeWidth="1.4"
         />
-        <circle cx="20.3" cy="11.6" r="1.5" fill="white" />
       </svg>
       <span className="font-bold tracking-tight text-ink">
         Meridian<span className="text-brand-600">SAT</span>
