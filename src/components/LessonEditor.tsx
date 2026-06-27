@@ -118,7 +118,9 @@ export default function LessonEditor({
                   </div>
                   <ul className="mt-2 space-y-1 text-sm text-ink-soft">
                     {q.choices?.map((c, ci) => (
-                      <li key={ci}>{c}</li>
+                      <li key={ci} className="choice-md">
+                        <Markdown>{c}</Markdown>
+                      </li>
                     ))}
                   </ul>
                   <p className="mt-2 text-sm font-semibold text-green-700">

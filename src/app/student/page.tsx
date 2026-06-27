@@ -662,12 +662,12 @@ function LessonView({
               const correct = q.answer.trim().charAt(0).toUpperCase();
               return (
                 <Card key={i} className="p-5">
-                  <p className="font-semibold text-ink">
-                    <span className="text-brand-600">Q{i + 1}.</span>{" "}
-                    <span className="inline">
+                  <div className="font-semibold text-ink">
+                    <span className="text-brand-600">Q{i + 1}.</span>
+                    <div className="mt-1 font-normal">
                       <Markdown>{q.prompt}</Markdown>
-                    </span>
-                  </p>
+                    </div>
+                  </div>
                   <div className="mt-3 space-y-2">
                     {q.choices?.map((c, ci) => {
                       const L = letter(c);
@@ -692,7 +692,9 @@ function LessonView({
                           className={`flex w-full items-start gap-2 rounded-xl border px-3.5 py-2.5 text-left text-sm text-ink-soft transition ${cls}`}
                         >
                           <span className="font-bold text-ink">{L}</span>
-                          <span>{c.replace(/^[A-D][).\s]*/, "")}</span>
+                          <span className="choice-md">
+                            <Markdown>{c.replace(/^[A-D][).\s]*/, "")}</Markdown>
+                          </span>
                         </button>
                       );
                     })}

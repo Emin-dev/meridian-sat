@@ -6,6 +6,7 @@ import {
   fillTemplate,
   parseJsonFromModel,
 } from "@/lib/deepseek";
+import { MATH_AUTHORING } from "@/lib/mathprompt";
 
 export const maxDuration = 60; // allow time for the model
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     const completion = await client.chat.completions.create({
       model: DEEPSEEK_MODEL,
       messages: [
-        { role: "system", content: systemP },
+        { role: "system", content: `${systemP}\n\n${MATH_AUTHORING}` },
         { role: "user", content: userPrompt },
       ],
       temperature: 0.7,

@@ -1,5 +1,6 @@
 import { aiComplete, parseJsonFromModel } from "@/lib/deepseek";
 import type { Student } from "@/lib/supabase";
+import { MATH_AUTHORING } from "@/lib/mathprompt";
 
 // ---------------------------------------------------------------------------
 // Draft package generation
@@ -64,6 +65,9 @@ function buildUserPrompt(
   }
 
   parts.push(`
+${MATH_AUTHORING}`);
+
+  parts.push(`
 Create a complete personalized package and return STRICT JSON with this exact shape:
 {
   "weak_areas": ["3-6 specific SAT topics to focus on, e.g. 'Linear equations', 'Command of evidence'"],
@@ -77,9 +81,9 @@ Create a complete personalized package and return STRICT JSON with this exact sh
       "section": "Reading and Writing" | "Math",
       "topic": "the specific SAT topic this lesson teaches",
       "difficulty": "Easy" | "Medium" | "Hard",
-      "content": "the full teaching content in markdown — explain the concept clearly with examples and strategies, several paragraphs",
+      "content": "the full teaching content in Markdown. Use REAL typeset math (see math rules): inline \\( ... \\) and display \\[ ... \\]. Add a graph or figure with a fenced plot/figure block whenever it aids understanding (parabolas, lines, geometry, data). Several paragraphs with worked examples.",
       "questions": [
-        { "prompt": "practice question text", "choices": ["A ...","B ...","C ...","D ..."], "answer": "the exact correct choice text", "explanation": "why it's correct" }
+        { "prompt": "practice question text with math typeset as \\( ... \\) / \\[ ... \\] and a plot/figure block if the question references a graph, table, or shape", "choices": ["choice text (use \\( \\) for any math)","...","...","..."], "answer": "the exact correct choice text", "explanation": "why it's correct, showing the worked steps in typeset math" }
       ],
       "study_plan": "1-2 sentences on how this lesson fits the student's plan"
     }
@@ -123,7 +127,7 @@ export function fallbackPackage(student: any): DraftPackage {
         topic: "Linear equations",
         difficulty: "Medium",
         content:
-          "## Linear Equations\n\nA linear equation graphs as a straight line: y = mx + b, where m is the slope and b is the y-intercept.\n\n**Strategy:** isolate the variable step by step, doing the same operation to both sides.",
+          "## Linear Equations\n\nA linear equation graphs as a straight line: \\( y = mx + b \\), where \\( m \\) is the slope and \\( b \\) is the y-intercept.\n\nThe slope between two points is\n\n\\[ m = \\frac{y_2 - y_1}{x_2 - x_1} \\]\n\n```plot\n{\"type\":\"line\",\"m\":2,\"b\":-1,\"xRange\":[-5,5],\"yRange\":[-6,6],\"title\":\"y = 2x - 1\"}\n```\n\n**Strategy:** isolate the variable step by step, doing the same operation to both sides.",
         questions: [],
         study_plan: "Core math foundation for the rest of the plan.",
       },
