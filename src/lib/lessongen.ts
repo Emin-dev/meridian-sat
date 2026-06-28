@@ -6,6 +6,7 @@ import {
   renderSourcePack,
   type CuratedChunk,
 } from "@/lib/satcontent";
+import { shuffleQuestions } from "@/lib/shuffle";
 
 // ---------------------------------------------------------------------------
 // Draft package generation
@@ -298,20 +299,18 @@ function normalize(pkg: any): DraftPackage {
     target_score:
       typeof pkg.target_score === "number" ? pkg.target_score : 1400,
     lessons: Array.isArray(pkg.lessons)
-      ? pkg.lessons.map((l: any) => ({
+      ? pkg.lessons.map((l: any, li: number) => ({
           title: String(l.title || "Lesson"),
           section: String(l.section || "Math"),
           topic: String(l.topic || ""),
           difficulty: String(l.difficulty || "Medium"),
           content: String(l.content || ""),
-          questions: Array.isArray(l.questions)
-            ? l.questions.map((q: any) => ({
-                prompt: String(q.prompt || ""),
-                choices: Array.isArray(q.choices) ? q.choices.map(String) : [],
-                answer: String(q.answer || ""),
-                explanation: String(q.explanation || ""),
-              }))
-            : [],
+          // Randomize answer order with a real RNG (no AI) so the correct choice
+          // isn't biased to one letter and no two questions share an order.
+          questions: shuffleQuestions(
+            Array.isArray(l.questions) ? l.questions : [],
+            `${String(l.title || "Lesson")}#${li}`
+          ),
           study_plan: String(l.study_plan || ""),
         }))
       : [],

@@ -7,6 +7,7 @@ import {
 } from "@/lib/deepseek";
 import { MATH_AUTHORING } from "@/lib/mathprompt";
 import { selectCuratedSources, renderSourcePack } from "@/lib/satcontent";
+import { shuffleQuestions } from "@/lib/shuffle";
 import { requireAdmin } from "@/lib/adminauth";
 import { apiError } from "@/lib/api";
 
@@ -91,7 +92,12 @@ export async function POST(req: NextRequest) {
         topic,
         difficulty: difficulty || "medium",
         content: parsed.content || "",
-        questions: parsed.questions || [],
+        // Randomize answer order with a real RNG (no AI) so the correct choice
+        // isn't always the same letter and orders differ across questions.
+        questions: shuffleQuestions(
+          Array.isArray(parsed.questions) ? parsed.questions : [],
+          `${parsed.title || topic}#${section}#${Date.now()}`
+        ),
         study_plan: parsed.study_plan || "",
         status: "published",
       })
