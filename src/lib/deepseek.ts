@@ -31,10 +31,27 @@ type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
  */
 export async function chatComplete(
   messages: ChatMessage[],
-  opts: { json?: boolean; temperature?: number; maxTokens?: number } = {}
+  opts: {
+    json?: boolean;
+    temperature?: number;
+    maxTokens?: number;
+    // Reasoning models accept an effort dial. "high" = think harder (best
+    // quality, slower). Pass this for content where quality matters most
+    // (e.g. SAT question authoring). Omitted = model default.
+    reasoningEffort?: "low" | "medium" | "high";
+  } = {}
 ): Promise<string> {
-  const res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
+  // Hard timeout so a slow upstream call can't hang indefinitely. Generous
+  // ceiling (deepseek-v4-pro reasoning can take 30-60s on rich prompts) while
+  // still staying under the 300s serverless function budget; on abort the
+  // caller treats it as a transient failure and the chain re-calls.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  let res: Response;
+  try {
+    res = await fetch(`${DEEPSEEK_BASE}/chat/completions`, {
     method: "POST",
+    signal: controller.signal,
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${getApiKey()}`,
@@ -48,9 +65,16 @@ export async function chatComplete(
       // reasoning eats it all and `content` returns EMPTY (finish_reason
       // "length"). Keep a generous default so the real answer always fits.
       max_tokens: opts.maxTokens ?? 8000,
+      ...(opts.reasoningEffort
+        ? { reasoning_effort: opts.reasoningEffort }
+        : {}),
       ...(opts.json ? { response_format: { type: "json_object" } } : {}),
     }),
   });
+
+  } finally {
+    clearTimeout(timer);
+  }
 
   if (!res.ok) {
     // Body may carry useful detail for server logs; never surfaced to clients.
@@ -76,7 +100,12 @@ export function fillTemplate(
 export async function aiComplete(
   system: string,
   user: string,
-  opts: { json?: boolean; temperature?: number; maxTokens?: number } = {}
+  opts: {
+    json?: boolean;
+    temperature?: number;
+    maxTokens?: number;
+    reasoningEffort?: "low" | "medium" | "high";
+  } = {}
 ): Promise<string> {
   return chatComplete(
     [
@@ -99,5 +128,20 @@ export function parseJsonFromModel(text: string): any {
     const last = cleaned.lastIndexOf("}");
     if (first !== -1 && last !== -1) cleaned = cleaned.slice(first, last + 1);
   }
-  return JSON.parse(cleaned);
+  try {
+    return JSON.parse(cleaned);
+  } catch (firstErr) {
+    // The model frequently emits LaTeX math inside JSON strings (\(, \[, \sqrt,
+    // \frac, \times, ...). A lone backslash that isn't a valid JSON escape makes
+    // JSON.parse throw "Bad escaped character". Repair by escaping any backslash
+    // that is NOT already part of a valid JSON escape (\" \\ \/ \b \f \n \r \t \uXXXX).
+    try {
+      const repaired = cleaned.replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+      return JSON.parse(repaired);
+    } catch {
+      // Repair made things worse (or the problem wasn't backslashes). Re-throw
+      // the ORIGINAL error so logs reflect the true cause, not the repair's.
+      throw firstErr;
+    }
+  }
 }

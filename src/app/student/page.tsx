@@ -116,6 +116,7 @@ function StudentInner() {
   const [planHighlight, setPlanHighlight] = useState(false);
   const [mood, setMood] = useState<string>("steady");
   const nudgeFetched = useRef(false);
+  const autoGenFired = useRef(false);
   const [tools, setTools] = useState<StudentToolCard[]>([]);
   // Currently-open study tool (rendered in a focused modal popup).
   const [activeTool, setActiveTool] = useState<StudentToolCard | null>(null);
@@ -198,6 +199,35 @@ function StudentInner() {
         })
         .catch(() => {})
         .finally(() => setSuggestionsLoading(false));
+    }
+
+    // Prepare-ahead: fire-and-forget a background CHAIN that auto-generates a
+    // fresh DRAFT lesson set so the teacher never waits for generation. The
+    // endpoint builds ONE lesson per call and reports {done}. We keep calling it
+    // until the set is complete, so lessons land one after another. It is
+    // idempotent + debounced (skips when a set is already waiting or was
+    // prepared recently), so this is safe to start on every login. We never
+    // block the UI on it; when the set completes it raises the admin alarm.
+    if (me.status === "active" && !autoGenFired.current) {
+      autoGenFired.current = true;
+      const chain = async () => {
+        // Hard safety cap so a persistent failure can never loop forever.
+        for (let i = 0; i < 8; i++) {
+          try {
+            const r = await studentFetch("/api/generate-lessons-bulk/auto", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ studentId }),
+            });
+            if (!r.ok) break;
+            const d = await r.json().catch(() => null);
+            if (!d || d.done) break; // finished, skipped, or complete
+          } catch {
+            break;
+          }
+        }
+      };
+      chain();
     }
 
     // Load any tools the teacher has approved for this student.

@@ -38,6 +38,12 @@ import {
   Pencil,
   Trash2,
   Shield,
+  Layers,
+  CheckCircle2,
+  Loader2,
+  XCircle,
+  Circle,
+  Bell,
 } from "lucide-react";
 
 type Tab = "lessons" | "tools" | "media" | "progress" | "profile";
@@ -246,26 +252,94 @@ function LessonsAndPlan({
   onEdit: (l: Lesson) => void;
   reload: () => void;
 }) {
+  // Auto-generated lessons land as drafts and are surfaced for review here.
+  // Students only ever see published lessons.
+  const draftLessons = lessons.filter((l) => l.status === "draft");
+  const publishedLessons = lessons.filter((l) => l.status !== "draft");
+
+  async function approveDraft(l: Lesson) {
+    await adminFetch(`/api/lessons/${l.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "published" }),
+    });
+    reload();
+  }
+  async function discardDraft(l: Lesson) {
+    if (!confirm("Discard this draft lesson? This cannot be undone.")) return;
+    await adminFetch(`/api/lessons/${l.id}`, { method: "DELETE" });
+    reload();
+  }
+
   return (
     <div className="space-y-6">
+      {/* Drafts awaiting review: auto-generated on student login. */}
+      {draftLessons.length > 0 && (
+        <Card className="border-amber-300 bg-amber-50/60 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-amber-500 text-white">
+              <Bell size={15} />
+            </span>
+            <h3 className="text-sm font-bold text-amber-800">
+              Drafts awaiting review ({draftLessons.length})
+            </h3>
+          </div>
+          <p className="mb-3 text-xs text-amber-700">
+            These lessons were prepared automatically when the student signed in.
+            Students cannot see them until you approve. Approve to publish, edit
+            first, or discard.
+          </p>
+          <div className="space-y-2">
+            {draftLessons.map((l) => (
+              <Card key={l.id} className="flex items-center justify-between gap-3 p-4">
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge tone={l.section === "Math" ? "brand" : "amber"}>{l.section}</Badge>
+                    <Badge tone="slate">{l.difficulty}</Badge>
+                  </div>
+                  <h4 className="mt-1.5 truncate font-semibold text-ink">{l.title}</h4>
+                  <p className="text-xs text-ink-muted">
+                    {l.questions?.length || 0} questions
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                  <Button variant="primary" onClick={() => approveDraft(l)}>
+                    <CheckCircle2 size={15} /> Approve
+                  </Button>
+                  <Button variant="soft" onClick={() => onEdit(l)}>
+                    <Pencil size={15} /> Edit
+                  </Button>
+                  <Button variant="danger" onClick={() => discardDraft(l)}>
+                    <Trash2 size={15} />
+                  </Button>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {/* pending review for this student */}
       <AdminReview studentId={student.id} reload={reload} />
 
-      {/* generate a new lesson for this student */}
+      {/* one-click full lesson set (3-5 lessons, 50+ questions) */}
+      <BulkGenerate student={student} reload={reload} />
+
+      {/* generate a single new lesson for this student */}
       <GenerateLesson student={student} reload={reload} />
 
-      {/* existing lessons */}
+      {/* published lessons (what the student sees) */}
       <div>
         <h3 className="mb-2 text-sm font-bold text-ink">
-          Lessons ({lessons.length})
+          Lessons ({publishedLessons.length})
         </h3>
-        {lessons.length === 0 ? (
+        {publishedLessons.length === 0 ? (
           <Card className="p-8 text-center text-sm text-ink-muted">
-            No lessons yet. Generate one above.
+            No published lessons yet. Generate one above.
           </Card>
         ) : (
           <div className="space-y-2">
-            {lessons.map((l) => (
+            {publishedLessons.map((l) => (
               <Card key={l.id} className="flex items-center justify-between p-4">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
@@ -299,6 +373,281 @@ function LessonsAndPlan({
         )}
       </div>
     </div>
+  );
+}
+
+type PlannedLesson = {
+  index: number;
+  title: string;
+  section: string;
+  domain: string;
+  topic: string;
+  difficulty: "Easy" | "Medium" | "Hard";
+  questionTarget: number;
+  difficultyMix: { Easy: number; Medium: number; Hard: number };
+  sourceIds: string[];
+  reason: string;
+};
+
+type BulkPlan = {
+  studentId: string;
+  lessonCount: number;
+  totalQuestions: number;
+  lessons: PlannedLesson[];
+  weakAreas: string[];
+};
+
+type LessonStatus = "pending" | "running" | "done" | "failed";
+
+function BulkGenerate({ student, reload }: { student: Student; reload: () => void }) {
+  const [lessonCount, setLessonCount] = useState("4");
+  const [totalQuestions, setTotalQuestions] = useState("52");
+  const [plan, setPlan] = useState<BulkPlan | null>(null);
+  const [statuses, setStatuses] = useState<LessonStatus[]>([]);
+  const [counts, setCounts] = useState<number[]>([]);
+  const [phase, setPhase] = useState<"idle" | "planning" | "generating" | "done">("idle");
+  const [err, setErr] = useState("");
+
+  const total = plan?.lessons.length ?? 0;
+  const doneCount = statuses.filter((s) => s === "done").length;
+  const failedCount = statuses.filter((s) => s === "failed").length;
+  const generatedQuestions = counts.reduce((a, b) => a + b, 0);
+
+  async function planSet() {
+    setErr("");
+    setPhase("planning");
+    setPlan(null);
+    setStatuses([]);
+    setCounts([]);
+    try {
+      const res = await adminFetch("/api/generate-lessons-bulk/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          studentId: student.id,
+          lessonCount: Number(lessonCount),
+          totalQuestions: Number(totalQuestions),
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        setErr(d.error || "Could not build a plan.");
+        setPhase("idle");
+        return;
+      }
+      const p: BulkPlan = d.plan;
+      setPlan(p);
+      setStatuses(p.lessons.map(() => "pending"));
+      setCounts(p.lessons.map(() => 0));
+      setPhase("idle");
+    } catch {
+      setErr("Something went wrong while planning.");
+      setPhase("idle");
+    }
+  }
+
+  async function runLessons(targetIndexes: number[], startAvoid: string[]) {
+    if (!plan) return;
+    setPhase("generating");
+    setErr("");
+    let avoid = [...startAvoid];
+    for (const i of targetIndexes) {
+      setStatuses((prev) => {
+        const next = [...prev];
+        next[i] = "running";
+        return next;
+      });
+      try {
+        const res = await adminFetch("/api/generate-lessons-bulk/lesson", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            studentId: student.id,
+            lesson: plan.lessons[i],
+            avoidPrompts: avoid,
+            // Manual one-click sets also land as drafts so every generated
+            // lesson funnels through the same review gate before students see it.
+            status: "draft",
+          }),
+        });
+        const d = await res.json();
+        if (!res.ok) {
+          setStatuses((prev) => {
+            const next = [...prev];
+            next[i] = "failed";
+            return next;
+          });
+          continue;
+        }
+        if (Array.isArray(d.prompts)) avoid = avoid.concat(d.prompts.map(String));
+        setCounts((prev) => {
+          const next = [...prev];
+          next[i] = Number(d.questionCount) || 0;
+          return next;
+        });
+        setStatuses((prev) => {
+          const next = [...prev];
+          next[i] = "done";
+          return next;
+        });
+        reload();
+      } catch {
+        setStatuses((prev) => {
+          const next = [...prev];
+          next[i] = "failed";
+          return next;
+        });
+      }
+    }
+    setPhase("done");
+  }
+
+  function generateAll() {
+    if (!plan) return;
+    runLessons(
+      plan.lessons.map((_, i) => i),
+      []
+    );
+  }
+
+  function retryFailed() {
+    if (!plan) return;
+    const targets = statuses
+      .map((s, i) => (s === "failed" ? i : -1))
+      .filter((i) => i >= 0);
+    if (!targets.length) return;
+    runLessons(targets, []);
+  }
+
+  function reset() {
+    setPlan(null);
+    setStatuses([]);
+    setCounts([]);
+    setPhase("idle");
+    setErr("");
+  }
+
+  const busy = phase === "planning" || phase === "generating";
+
+  function StatusIcon({ s }: { s: LessonStatus }) {
+    if (s === "done") return <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+    if (s === "running") return <Loader2 className="h-4 w-4 animate-spin text-brand-600" />;
+    if (s === "failed") return <XCircle className="h-4 w-4 text-red-500" />;
+    return <Circle className="h-4 w-4 text-ink-soft/40" />;
+  }
+
+  return (
+    <Card className="space-y-4 border-brand-200 bg-brand-50/40 p-5">
+      <div className="flex items-center gap-2">
+        <Layers className="h-5 w-5 text-brand-600" />
+        <h3 className="text-sm font-bold text-ink">Generate a full lesson set</h3>
+      </div>
+      <p className="text-xs text-ink-soft">
+        One click builds 3-5 grounded lessons (50+ questions total) from this
+        student&apos;s weak areas. Answers are randomized and questions are
+        de-duplicated across the whole set.
+      </p>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-ink-soft">Lessons</span>
+          <Select
+            value={lessonCount}
+            onChange={setLessonCount}
+            options={[
+              { value: "3", label: "3 lessons" },
+              { value: "4", label: "4 lessons" },
+              { value: "5", label: "5 lessons" },
+            ]}
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1.5 block text-xs font-semibold text-ink-soft">Total questions</span>
+          <Select
+            value={totalQuestions}
+            onChange={setTotalQuestions}
+            options={[
+              { value: "50", label: "50 questions" },
+              { value: "52", label: "52 questions" },
+              { value: "60", label: "60 questions" },
+            ]}
+          />
+        </label>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="ghost" onClick={planSet} disabled={busy}>
+          {phase === "planning" ? <Spinner className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
+          Preview coverage plan
+        </Button>
+        <Button onClick={generateAll} disabled={busy || !plan}>
+          {phase === "generating" ? (
+            <Spinner className="h-4 w-4" />
+          ) : (
+            <Wand2 className="h-4 w-4" />
+          )}
+          Generate {lessonCount}-lesson set
+        </Button>
+      </div>
+
+      {err && <p className="text-xs font-semibold text-red-600">{err}</p>}
+
+      {plan && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-ink-soft">
+              Coverage plan ({plan.lessonCount} lessons, target {plan.totalQuestions} questions)
+            </span>
+            {phase === "generating" || phase === "done" ? (
+              <span className="text-xs font-semibold text-ink">
+                {doneCount}/{total} done - {generatedQuestions} questions generated
+              </span>
+            ) : null}
+          </div>
+          <ul className="space-y-1.5">
+            {plan.lessons.map((l, i) => (
+              <li
+                key={l.index}
+                className="flex items-start gap-2.5 rounded-xl border border-line bg-white px-3 py-2.5"
+              >
+                <span className="mt-0.5">
+                  <StatusIcon s={statuses[i] ?? "pending"} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-ink">
+                    {l.title}
+                  </span>
+                  <span className="block text-xs text-ink-soft">
+                    {l.section} - {l.topic} - {l.difficulty} -{" "}
+                    {counts[i] ? `${counts[i]} questions` : `target ${l.questionTarget}`}
+                  </span>
+                </span>
+                <Badge tone="slate">{l.difficulty}</Badge>
+              </li>
+            ))}
+          </ul>
+
+          {phase === "done" && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <p className="text-xs font-semibold text-ink">
+                {failedCount === 0
+                  ? `Done. ${doneCount} lessons, ${generatedQuestions} questions added.`
+                  : `${doneCount} of ${total} lessons created (${failedCount} failed).`}
+              </p>
+              {failedCount > 0 && (
+                <Button variant="soft" onClick={retryFailed} disabled={busy}>
+                  <Loader2 className="h-4 w-4" />
+                  Retry failed lessons
+                </Button>
+              )}
+              <Button variant="ghost" onClick={reset} disabled={busy}>
+                Reset
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
   );
 }
 

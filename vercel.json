@@ -3,6 +3,9 @@
   "functions": {
     "src/app/api/generate-lesson/route.ts": {
       "maxDuration": 60
+    },
+    "src/app/api/generate-lessons-bulk/auto/route.ts": {
+      "maxDuration": 300
     }
   }
 }

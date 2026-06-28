@@ -28,6 +28,7 @@ import {
   CheckSquare,
   Square,
   Sparkles,
+  Bell,
 } from "lucide-react";
 
 type View = "overview" | "students" | "settings";
@@ -97,6 +98,10 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   // per-student pending counts (review + tools) for the list badges
   const [pending, setPending] = useState<Record<string, number>>({});
+  // per-student auto-generated DRAFT lesson counts awaiting review, plus the
+  // global total that drives the "ready to review" alarm bell in the header.
+  const [draftCounts, setDraftCounts] = useState<Record<string, number>>({});
+  const [draftTotal, setDraftTotal] = useState(0);
 
   const triedPw = useRef("");
 
@@ -207,7 +212,30 @@ export default function AdminPage() {
       }
     } catch {}
     setPending(counts);
+    // Pull the draft-lesson alarm state alongside the rest of the dashboard.
+    loadDrafts();
   }
+
+  // Fetch the count of auto-generated DRAFT lessons awaiting review, grouped by
+  // student. Drives the global alarm bell and the per-student draft badge.
+  async function loadDrafts() {
+    try {
+      const d = await adminFetch("/api/lessons/drafts").then((r) => r.json());
+      const map: Record<string, number> = {};
+      for (const row of d.students || []) map[row.studentId] = row.count;
+      setDraftCounts(map);
+      setDraftTotal(d.totalDrafts || 0);
+    } catch {}
+  }
+
+  // Poll the draft alarm every 30s so a teacher sees new lesson sets land
+  // without refreshing. Only while authenticated.
+  useEffect(() => {
+    if (!authed) return;
+    const t = setInterval(loadDrafts, 30000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authed]);
 
   if (initing) {
     return (
@@ -272,12 +300,41 @@ export default function AdminPage() {
               <SettingsIcon size={16} /> Settings
             </NavBtn>
           </div>
-          <button
-            onClick={logout}
-            className="hidden items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink sm:inline-flex"
-          >
-            <Home size={16} /> Sign out
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Review alarm: lights up when auto-generated draft lesson sets are
+                waiting. Clicking jumps to the student list to review them. */}
+            <button
+              onClick={() => setView("students")}
+              title={
+                draftTotal > 0
+                  ? `${draftTotal} draft lesson${draftTotal === 1 ? "" : "s"} awaiting review`
+                  : "No lessons awaiting review"
+              }
+              aria-label={
+                draftTotal > 0
+                  ? `${draftTotal} draft lessons awaiting review`
+                  : "No lessons awaiting review"
+              }
+              className={`relative inline-flex h-9 w-9 items-center justify-center rounded-xl border transition ${
+                draftTotal > 0
+                  ? "border-amber-300 bg-amber-50 text-amber-600 hover:bg-amber-100"
+                  : "border-line bg-white text-ink-muted hover:text-ink"
+              }`}
+            >
+              <Bell size={18} className={draftTotal > 0 ? "animate-pulse" : ""} />
+              {draftTotal > 0 && (
+                <span className="absolute -right-1.5 -top-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-amber-500 px-1 text-[11px] font-semibold leading-[18px] text-white">
+                  {draftTotal}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={logout}
+              className="hidden items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink sm:inline-flex"
+            >
+              <Home size={16} /> Sign out
+            </button>
+          </div>
         </div>
       </header>
 
@@ -294,6 +351,7 @@ export default function AdminPage() {
             students={students}
             loading={loading}
             pending={pending}
+            draftCounts={draftCounts}
             reload={loadAll}
             onOpen={(id) => router.push(`/admin/student/${id}`)}
           />
@@ -331,12 +389,14 @@ function StudentsList({
   students,
   loading,
   pending,
+  draftCounts,
   reload,
   onOpen,
 }: {
   students: Student[];
   loading: boolean;
   pending: Record<string, number>;
+  draftCounts: Record<string, number>;
   reload: () => void;
   onOpen: (id: string) => void;
 }) {
@@ -505,6 +565,7 @@ function StudentsList({
               key={s.id}
               student={s}
               pending={pending[s.id] || 0}
+              drafts={draftCounts[s.id] || 0}
               selected={selected.has(s.id)}
               onToggleSelect={() => toggleSelect(s.id)}
               onOpen={() => onOpen(s.id)}
@@ -568,6 +629,7 @@ function TagChip({
 function StudentRow({
   student,
   pending,
+  drafts,
   selected,
   onToggleSelect,
   onOpen,
@@ -575,6 +637,7 @@ function StudentRow({
 }: {
   student: Student;
   pending: number;
+  drafts: number;
   selected: boolean;
   onToggleSelect: () => void;
   onOpen: () => void;
@@ -611,6 +674,11 @@ function StudentRow({
             {pending > 0 && (
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-700">
                 <Inbox size={11} /> {pending} to review
+              </span>
+            )}
+            {drafts > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-500 px-2 py-0.5 text-[11px] font-bold text-white">
+                <Bell size={11} /> {drafts} draft{drafts === 1 ? "" : "s"} ready
               </span>
             )}
             {atRisk && (
