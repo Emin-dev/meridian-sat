@@ -212,16 +212,31 @@ function StudentInner() {
       autoGenFired.current = true;
       const chain = async () => {
         // Hard safety cap so a persistent failure can never loop forever.
-        for (let i = 0; i < 8; i++) {
+        // The endpoint builds ONE lesson per call. On a transient model hiccup
+        // it returns 503 with {retry:true} instead of advancing — in that case
+        // we must KEEP GOING (with a short backoff) rather than abandoning the
+        // set half-finished, so the chain is self-healing.
+        let consecutiveRetries = 0;
+        for (let i = 0; i < 14; i++) {
           try {
             const r = await studentFetch("/api/generate-lessons-bulk/auto", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ studentId }),
             });
-            if (!r.ok) break;
             const d = await r.json().catch(() => null);
-            if (!d || d.done) break; // finished, skipped, or complete
+            if (d?.done) break; // set complete / skipped / nothing to do
+            if (!r.ok) {
+              // Transient retry path: back off briefly and try again, but give
+              // up if the same call keeps failing several times in a row.
+              if (d?.retry && consecutiveRetries < 4) {
+                consecutiveRetries++;
+                await new Promise((res) => setTimeout(res, 1500));
+                continue;
+              }
+              break;
+            }
+            consecutiveRetries = 0; // a successful lesson resets the counter
           } catch {
             break;
           }
