@@ -245,15 +245,38 @@ export default function StudentMedia({ studentId }: { studentId: string }) {
           </p>
         </Card>
       ) : (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {assets.map((a) => (
-            <Card key={a.id} className="overflow-hidden p-0 animate-fadeUp">
-              <div data-testid={`asset-${a.id}`}>
+        <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {assets.map((a, i) => (
+            <Card key={a.id} className="overflow-hidden p-0">
+              <div
+                data-testid={`asset-${a.id}`}
+                className="animate-cardIn"
+                style={{ ["--i" as string]: i }}
+              >
                 {a.kind === "image" && a.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={a.url} alt={a.title} className="h-36 w-full object-cover" />
+                  <img
+                    src={a.url}
+                    alt={a.title}
+                    width={1024}
+                    height={576}
+                    loading={i < 3 ? "eager" : "lazy"}
+                    decoding="async"
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                    className="aspect-video w-full bg-brand-50 object-cover"
+                  />
+                ) : a.kind === "video" && a.url ? (
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <video
+                    src={a.url}
+                    poster={a.thumbnail_url || undefined}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="aspect-video w-full bg-black object-cover"
+                  />
                 ) : (
-                  <div className="flex h-36 w-full items-center justify-center bg-brand-50 text-brand-400">
+                  <div className="flex aspect-video w-full items-center justify-center bg-brand-50 text-brand-400">
                     {a.kind === "podcast" ? (
                       <Mic size={28} />
                     ) : a.kind === "video" ? (
@@ -270,7 +293,7 @@ export default function StudentMedia({ studentId }: { studentId: string }) {
                       {a.title || "Untitled"}
                     </p>
                   </div>
-                  {(a.kind === "podcast" || a.kind === "video") && a.url && (
+                  {a.kind === "podcast" && a.url && (
                     <audio controls src={a.url} className="mt-2 w-full" />
                   )}
                   {a.kind === "youtube" && a.url && (

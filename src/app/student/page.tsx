@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Logo, Button, Card, Badge, Spinner } from "@/components/ui";
+import { Logo, Button, Card, Badge } from "@/components/ui";
 import Markdown from "@/components/Markdown";
 import Onboarding from "@/components/Onboarding";
 import Preparing from "@/components/Preparing";
@@ -11,6 +11,7 @@ import UsageMeter, { type RateStatus } from "@/components/UsageMeter";
 import type { Lesson, Student, Progress } from "@/lib/supabase";
 import { studentFetch, setStudentToken, getStudentToken } from "@/lib/studentClient";
 import StudentMedia from "@/components/StudentMedia";
+import LoopVideo from "@/components/LoopVideo";
 import { DecorMediaProvider, DecorMedia } from "@/components/DecorMedia";
 import {
   BookOpen,
@@ -18,7 +19,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ListChecks,
-  GraduationCap,
   LogOut,
   Sparkles,
   CalendarCheck,
@@ -105,6 +105,15 @@ function StudentInner() {
   const lessonsRef = useRef<HTMLHeadingElement | null>(null);
   // Ranked, personalized "what to do next" cards (each is actionable).
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  // True while the personalized recommendations are being fetched/built, so we
+  // can show skeleton shimmer cards in the destination region instead of an
+  // abrupt silent pop-in once they arrive.
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  // Polite screen-reader announcement when recommendations arrive.
+  const [srAnnounce, setSrAnnounce] = useState("");
+  // Briefly pulse-highlight the study-plan card when a "review plan" card is
+  // tapped, so the eye is guided to what changed.
+  const [planHighlight, setPlanHighlight] = useState(false);
   const [mood, setMood] = useState<string>("steady");
   const nudgeFetched = useRef(false);
   const [tools, setTools] = useState<StudentToolCard[]>([]);
@@ -161,6 +170,9 @@ function StudentInner() {
     // the student is thriving or struggling.
     if (me.status === "active" && !nudgeFetched.current) {
       nudgeFetched.current = true;
+      // Show skeleton cards in the destination region while the helper builds
+      // the personalized recommendations (this can take several seconds).
+      setSuggestionsLoading(true);
       studentFetch("/api/ai/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -174,10 +186,18 @@ function StudentInner() {
         })
         .then((d) => {
           const list: Suggestion[] = Array.isArray(d?.actions) ? d.actions : [];
-          if (list.length) setSuggestions(list.slice(0, 5));
+          if (list.length) {
+            setSuggestions(list.slice(0, 5));
+            // Announce politely for screen-reader users (the visual reveal is
+            // invisible to them).
+            setSrAnnounce(
+              `${list.slice(0, 5).length} personalized recommendations are ready.`
+            );
+          }
           if (d?.mood) setMood(d.mood);
         })
-        .catch(() => {});
+        .catch(() => {})
+        .finally(() => setSuggestionsLoading(false));
     }
 
     // Load any tools the teacher has approved for this student.
@@ -210,13 +230,31 @@ function StudentInner() {
     setActive(lesson);
   }
 
+  // Smooth-scroll a target element so it lands BELOW the sticky header with
+  // breathing room (offset), then briefly highlight it. Never jam it to the
+  // top edge, and never yank the page to the very bottom. Respects reduced
+  // motion (the CSS sets scroll-behavior:auto, and we skip the highlight feel).
+  function revealPlan() {
+    setShowPlan(true);
+    // Wait for the plan body to expand, then scroll with a header offset.
+    setTimeout(() => {
+      const el = planRef.current;
+      if (!el) return;
+      const headerOffset = 84; // sticky header height + breathing room
+      const y =
+        el.getBoundingClientRect().top + window.scrollY - headerOffset;
+      window.scrollTo({ top: y, behavior: "smooth" });
+      // Pulse-highlight so the eye is drawn to what just changed.
+      setPlanHighlight(true);
+      window.setTimeout(() => setPlanHighlight(false), 1900);
+    }, 90);
+  }
+
   // Execute a recommendation card. Every card does something real.
   function runSuggestion(s: Suggestion) {
     const action = s.target?.action;
     if (action === "review_plan") {
-      setShowPlan(true);
-      // Scroll the study-plan card into view so the click visibly does something.
-      setTimeout(() => planRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 60);
+      revealPlan();
       return;
     }
     if (s.target?.lessonId) {
@@ -241,11 +279,7 @@ function StudentInner() {
   };
 
   if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center text-brand-600">
-        <Spinner className="h-7 w-7" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
 
   // Unskippable first-login survey: if the student hasn't onboarded, they must
@@ -395,9 +429,45 @@ function StudentInner() {
           </Card>
         )}
 
+        {/* Polite live region so screen-reader users are told recommendations
+            arrived (the visual reveal is invisible to them). Lives in the
+            initial markup so assistive tech picks up the later update. */}
+        <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {srAnnounce}
+        </div>
+
+        {/* Loading state: skeleton shimmer cards in the SAME destination region
+            and layout as the real cards, so the transition is a fill (not an
+            abrupt pop-in) and the layout never shifts. */}
+        {suggestionsLoading && suggestions.length === 0 && (
+          <section className="mt-7 animate-fadeUp" aria-hidden="true">
+            <div className="flex items-center gap-2">
+              <span className="h-7 w-7 rounded-lg skeleton-shimmer" />
+              <span className="h-5 w-44 rounded skeleton-shimmer" />
+            </div>
+            <span className="mt-2 block h-4 w-72 max-w-full rounded skeleton-shimmer" />
+            <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex h-44 flex-col rounded-2xl border border-line bg-white p-5 shadow-card"
+                >
+                  <span className="h-11 w-11 rounded-xl skeleton-shimmer" />
+                  <span className="mt-4 h-4 w-3/4 rounded skeleton-shimmer" />
+                  <span className="mt-2 h-3 w-full rounded skeleton-shimmer" />
+                  <span className="mt-1.5 h-3 w-5/6 rounded skeleton-shimmer" />
+                  <span className="mt-auto h-4 w-24 rounded skeleton-shimmer" />
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Personalized "recommended for you" cards. Each card runs a real
             action on click: open a lesson, jump straight into practice, or open
-            the study plan. Adapts in count (3-5) and tone to the student. */}
+            the study plan. Adapts in count (3-5) and tone to the student.
+            Cards enter staggered (priority order lands first) rather than all
+            at once, so the reveal is legible instead of startling. */}
         {suggestions.length > 0 && (
           <section className="mt-7 animate-fadeUp">
             <div className="flex items-center gap-2">
@@ -444,7 +514,8 @@ function StudentInner() {
                     key={i}
                     onClick={() => runSuggestion(s)}
                     data-testid={`suggestion-${i}`}
-                    className={`group flex h-full flex-col rounded-2xl border bg-white p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop ${t.ring}`}
+                    style={{ ["--i" as any]: i }}
+                    className={`group flex h-full flex-col rounded-2xl border bg-white p-5 text-left shadow-card transition hover:-translate-y-0.5 hover:shadow-pop animate-cardIn ${t.ring}`}
                   >
                     <span className={`flex h-11 w-11 items-center justify-center rounded-xl ${t.chip}`}>
                       <Icon size={22} />
@@ -477,7 +548,7 @@ function StudentInner() {
         {/* Personalized study plan (collapsible) */}
         {student?.study_plan && (
           <div ref={planRef}>
-          <Card className="mt-3 p-4 animate-fadeUp scroll-mt-24">
+          <Card className={`mt-3 p-4 animate-fadeUp scroll-mt-24 ${planHighlight ? "animate-highlight" : ""}`}>
             <button
               onClick={() => setShowPlan((v) => !v)}
               className="flex w-full items-center justify-between text-left"
@@ -522,21 +593,7 @@ function StudentInner() {
             value={student?.target_score ?? "—"}
             label="Target score"
             tone="brand"
-            onClick={
-              student?.study_plan
-                ? () => {
-                    setShowPlan(true);
-                    setTimeout(
-                      () =>
-                        planRef.current?.scrollIntoView({
-                          behavior: "smooth",
-                          block: "center",
-                        }),
-                      60
-                    );
-                  }
-                : undefined
-            }
+            onClick={student?.study_plan ? revealPlan : undefined}
           />
         </div>
 
@@ -588,11 +645,15 @@ function StudentInner() {
         </h2>
 
         {lessons.length === 0 ? (
-          <Card className="mt-3 p-10 text-center">
-            <GraduationCap className="mx-auto text-brand-300" size={40} />
-            <p className="mt-3 font-semibold text-ink">No lessons yet</p>
+          <Card className="mt-3 flex flex-col items-center p-10 text-center">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50 text-amber-500 animate-pulse">
+              <Clock size={30} />
+            </div>
+            <p className="mt-4 font-display text-lg font-extrabold text-ink">
+              No lessons yet
+            </p>
             <p className="mt-1 text-sm text-ink-muted">
-              Your tutor will add personalized lessons here soon.
+              Your tutor is adding personalized lessons here soon.
             </p>
           </Card>
         ) : (
@@ -1010,18 +1071,40 @@ function LessonView({
             )}
 
             {submitted && (
-              <Card className="p-6 text-center">
-                <p className="text-sm font-medium text-ink-muted">Your score</p>
-                <p className="mt-1 text-4xl font-extrabold text-brand-600">
+              <Card className="flex flex-col items-center p-7 text-center animate-fadeUp">
+                {/* Wordless "finished!" celebration loop — the clear visual cue
+                    that this lesson is DONE. */}
+                <LoopVideo
+                  src="/success.mp4"
+                  poster="/success-poster.jpg"
+                  label="Lesson complete"
+                  size="w-28"
+                />
+                {/* Big score, high contrast. */}
+                <p className="mt-2 font-display text-5xl font-extrabold text-brand-600">
                   {score}%
                 </p>
-                <p className="mt-1 text-sm text-ink-soft">
-                  {correctCount} of {questions.length} correct
-                  {saving && " · saving…"}
+                {/* Visual correct/total dots so the result reads without English. */}
+                <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+                  {questions.map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        i < correctCount ? "bg-green-500" : "bg-slate-200"
+                      }`}
+                    />
+                  ))}
+                </div>
+                <p className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-ink">
+                  <CheckCircle2 size={16} className="text-green-600" />
+                  {correctCount} / {questions.length} correct
+                  {saving && (
+                    <span className="ml-1 text-ink-muted">· saving…</span>
+                  )}
                 </p>
-                <div className="mt-4">
-                  <Button variant="ghost" onClick={onBack}>
-                    Back to lessons
+                <div className="mt-5">
+                  <Button onClick={onBack}>
+                    Back to lessons <ArrowRight size={16} />
                   </Button>
                 </div>
               </Card>
@@ -1054,15 +1137,29 @@ function TabBtn({
   );
 }
 
+// Wordless "the app is working" wait screen. Shown while the student dashboard
+// loads. The looping animation is the universal cue that things are active —
+// no English needed.
+function LoadingScreen() {
+  return (
+    <main className="flex h-dvh flex-col items-center justify-center gap-5 bg-paper px-5 text-center">
+      <LoopVideo
+        src="/loading.mp4"
+        poster="/loading-poster.jpg"
+        label="Loading your lessons"
+        size="w-32"
+        className="animate-fadeUp"
+      />
+      <p className="animate-fadeUp font-display text-lg font-extrabold text-ink">
+        Loading{".".repeat(3)}
+      </p>
+    </main>
+  );
+}
+
 export default function StudentPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center text-brand-600">
-          <Spinner className="h-7 w-7" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingScreen />}>
       <StudentInner />
     </Suspense>
   );

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Logo, Button, Card, Spinner } from "@/components/ui";
+import { Logo, Button } from "@/components/ui";
 import type { Student } from "@/lib/supabase";
 import { studentFetch } from "@/lib/studentClient";
+import LoopVideo from "@/components/LoopVideo";
 import { Sparkles, ChevronRight, ChevronLeft } from "lucide-react";
 
 // Unskippable first-login survey. The student MUST answer these before they can
@@ -141,21 +142,21 @@ export default function Onboarding({
 
   if (submitting) {
     return (
-      <main className="flex min-h-screen items-center justify-center px-5">
-        <div className="text-center animate-fadeUp">
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
-            <Sparkles size={26} className="animate-pulse" />
-          </div>
-          <h1 className="mt-5 font-display text-xl font-extrabold text-ink">
-            Sending your answers to your tutor…
+      <main className="flex h-dvh flex-col items-center justify-center overflow-hidden px-5">
+        <div className="flex flex-col items-center text-center animate-fadeUp">
+          {/* Wordless "working" loop — the universal cue that the app is busy. */}
+          <LoopVideo
+            src="/loading.mp4"
+            poster="/loading-poster.jpg"
+            label="Sending your answers"
+            size="w-32"
+          />
+          <h1 className="mt-4 font-display text-xl font-extrabold text-ink">
+            Sending to your tutor{".".repeat(3)}
           </h1>
-          <p className="mt-2 max-w-sm text-sm text-ink-soft">
-            We&apos;re saving your answers so your tutor can prepare a study plan
-            and lessons made just for you. This only takes a moment.
+          <p className="mt-2 max-w-xs text-sm text-ink-soft">
+            Saving your answers so your tutor can build lessons just for you.
           </p>
-          <div className="mt-5 flex justify-center text-brand-600">
-            <Spinner className="h-6 w-6" />
-          </div>
         </div>
       </main>
     );

@@ -145,3 +145,52 @@ body {
   to { opacity: 1; transform: translateY(0); }
 }
 .animate-fadeUp { animation: fadeUp 0.35s ease both; }
+
+/* Staggered entrance for AI recommendation cards. The reveal must be legible:
+   the eye can track each card landing in priority order, not a disorienting
+   simultaneous pop-in. Each card sets --i (its index); delay = i * 70ms. */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-cardIn {
+  opacity: 0;
+  animation: cardIn 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: calc(var(--i, 0) * 70ms);
+}
+
+/* Brief highlight pulse drawn over a freshly revealed/target section so the
+   user's eye is guided to "what changed" even if they were looking elsewhere.
+   Uses color/shadow (not motion) so it stays accessibility-safe. */
+@keyframes highlightPulse {
+  0% { box-shadow: 0 0 0 0 rgba(31, 76, 237, 0); background-color: rgba(51, 102, 255, 0); }
+  18% { box-shadow: 0 0 0 4px rgba(31, 76, 237, 0.28); background-color: rgba(51, 102, 255, 0.07); }
+  100% { box-shadow: 0 0 0 0 rgba(31, 76, 237, 0); background-color: rgba(51, 102, 255, 0); }
+}
+.animate-highlight { animation: highlightPulse 1.8s ease-out 1; border-radius: 1rem; }
+
+/* Shimmer sweep for skeleton placeholders shown while suggestions load. */
+@keyframes shimmer {
+  0% { background-position: -480px 0; }
+  100% { background-position: 480px 0; }
+}
+.skeleton-shimmer {
+  background: linear-gradient(90deg, #eef1f8 25%, #f7f8fc 37%, #eef1f8 63%);
+  background-size: 960px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion: keep the information (cards still
+   appear) but drop the movement — fade only, no slide, no stagger, no shimmer
+   sweep, instant scroll. This is WCAG 2.3.3 / technique C39. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fadeUp,
+  .animate-cardIn {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+  .animate-highlight { animation: none !important; }
+  .skeleton-shimmer { animation: none !important; }
+  html { scroll-behavior: auto !important; }
+}

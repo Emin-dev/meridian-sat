@@ -6,6 +6,7 @@ import {
   parseJsonFromModel,
 } from "@/lib/deepseek";
 import { MATH_AUTHORING } from "@/lib/mathprompt";
+import { selectCuratedSources, renderSourcePack } from "@/lib/satcontent";
 import { requireAdmin } from "@/lib/adminauth";
 import { apiError } from "@/lib/api";
 
@@ -57,13 +58,27 @@ export async function POST(req: NextRequest) {
       difficulty: difficulty || "medium",
     });
 
+    // Ground the lesson in vetted curated SAT material (the "80%"). Bias the
+    // retrieval to the topic + this student's weak areas so the model adapts
+    // verified concepts/worked examples rather than inventing SAT rules.
+    const sources = selectCuratedSources(
+      [topic, ...(student.weak_areas || [])],
+      { limit: 4 }
+    );
+    const sourcePack = renderSourcePack(sources);
+    const groundedUser = sourcePack
+      ? `${userPrompt}\n\nAPPROVED SOURCE MATERIAL — ground this lesson in these vetted SAT concepts and worked examples (reuse/adapt this substance, ~80%; do not contradict it):\n${sourcePack}`
+      : userPrompt;
+
     const raw =
       (await chatComplete(
         [
           { role: "system", content: `${systemP}\n\n${MATH_AUTHORING}` },
-          { role: "user", content: userPrompt },
+          { role: "user", content: groundedUser },
         ],
-        { json: true, temperature: 0.7 }
+        // Reasoning model spends hidden tokens before the visible answer; give
+        // generous headroom so a single rich lesson never truncates to empty.
+        { json: true, temperature: 0.7, maxTokens: 12000 }
       )) || "{}";
     const parsed = parseJsonFromModel(raw);
 

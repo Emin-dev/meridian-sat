@@ -2,12 +2,18 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Logo, Card, Spinner } from "@/components/ui";
-import { ShieldCheck, ArrowRight } from "lucide-react";
+import { Logo, Card } from "@/components/ui";
+import { ShieldCheck, ArrowRight, Loader2, XCircle, KeyRound } from "lucide-react";
 
 // Minimalist, ad-style landing page for MeridianSAT.
 // Single focus: a student enters their access code and is signed in
 // AUTOMATICALLY — no button to press. Less text, one clear action.
+//
+// The page is locked to the viewport height (no scrolling) and gives a clear,
+// wordless status cue at all times so students always know what's happening:
+//   • idle (code ready)  -> blue arrow
+//   • checking           -> spinning loader (the app is working)
+//   • error              -> red X
 export default function Home() {
   const router = useRouter();
   const [code, setCode] = useState("");
@@ -58,15 +64,17 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
+  const ready = status === "idle" && code.trim().length >= 4;
+
   return (
-    <main className="relative flex min-h-screen flex-col overflow-hidden bg-paper">
+    <main className="relative flex h-dvh flex-col overflow-hidden bg-paper">
       {/* soft brand glow background */}
       <div
         aria-hidden
         className="pointer-events-none absolute -top-40 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 rounded-full bg-brand-200/40 blur-3xl"
       />
 
-      <header className="relative mx-auto flex w-full max-w-5xl items-center justify-between px-5 py-5">
+      <header className="relative mx-auto flex w-full max-w-5xl shrink-0 items-center justify-between px-5 py-4">
         <Logo />
         <button
           onClick={() => router.push("/admin")}
@@ -76,17 +84,14 @@ export default function Home() {
         </button>
       </header>
 
-      <div className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center px-5 pb-24 text-center">
-        <h1 className="font-display text-4xl font-extrabold leading-[1.1] tracking-tight text-ink md:text-5xl animate-fadeUp">
+      <div className="relative mx-auto flex w-full max-w-xl flex-1 flex-col items-center justify-center px-5 text-center">
+        <h1 className="font-display text-4xl font-extrabold leading-[1.05] tracking-tight text-ink md:text-5xl animate-fadeUp">
           Your SAT,
           <br />
           made <span className="text-brand-600">just for you</span>.
         </h1>
-        <p className="mt-4 max-w-sm text-base text-ink-soft animate-fadeUp">
-          Lessons built around your goals. Enter your code to begin.
-        </p>
 
-        <Card className="mt-6 w-full max-w-sm p-6 animate-fadeUp">
+        <Card className="mt-7 w-full max-w-sm p-6 animate-fadeUp">
           <div className="relative">
             <input
               value={code}
@@ -94,28 +99,40 @@ export default function Home() {
               onKeyDown={(e) => e.key === "Enter" && attempt(code)}
               autoFocus
               placeholder="ENTER YOUR CODE"
-              className="w-full rounded-xl border border-line bg-white px-4 py-4 text-center text-lg font-semibold uppercase tracking-[0.25em] text-ink outline-none transition focus:border-brand-400"
+              className={`w-full rounded-xl border bg-white px-4 py-4 pr-12 text-center text-lg font-semibold uppercase tracking-[0.25em] text-ink outline-none transition ${
+                status === "error"
+                  ? "border-red-300 focus:border-red-400"
+                  : "border-line focus:border-brand-400"
+              }`}
             />
-            {status === "checking" && (
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-600">
-                <Spinner className="h-5 w-5" />
-              </span>
-            )}
-            {status === "idle" && code.trim().length >= 4 && (
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-400">
-                <ArrowRight size={18} />
-              </span>
-            )}
+            {/* Always-visible status cue on the right side of the field. */}
+            <span className="absolute right-3.5 top-1/2 -translate-y-1/2">
+              {status === "checking" ? (
+                <Loader2 size={22} className="animate-spin text-brand-600" />
+              ) : status === "error" ? (
+                <XCircle size={22} className="text-red-500" />
+              ) : ready ? (
+                <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-600 text-white shadow-pop">
+                  <ArrowRight size={18} strokeWidth={2.6} />
+                </span>
+              ) : (
+                <KeyRound size={20} className="text-ink-muted" />
+              )}
+            </span>
           </div>
 
           {error && (
-            <p className="mt-3 text-sm font-medium text-red-600">{error}</p>
+            <p className="mt-3 flex items-center justify-center gap-1.5 text-sm font-semibold text-red-600">
+              <XCircle size={15} /> {error}
+            </p>
           )}
-          <p className="mt-4 text-xs text-ink-muted">
-            {status === "checking"
-              ? "Signing you in…"
-              : "You're signed in automatically — no password needed."}
-          </p>
+          {!error && (
+            <p className="mt-4 text-xs font-medium text-ink-muted">
+              {status === "checking"
+                ? "Signing you in…"
+                : "No password — you're signed in automatically."}
+            </p>
+          )}
         </Card>
       </div>
     </main>
