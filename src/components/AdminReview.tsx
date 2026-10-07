@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button, Card, Badge, Spinner, Textarea } from "@/components/ui";
 import Markdown from "@/components/Markdown";
 import type { LessonRequest, Student } from "@/lib/supabase";
@@ -37,7 +37,7 @@ export default function AdminReview({
   const [loading, setLoading] = useState(true);
   const [openId, setOpenId] = useState<string | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     const [rRes, sRes] = await Promise.all([
       adminFetch("/api/lesson-requests?status=pending"),
@@ -50,11 +50,11 @@ export default function AdminReview({
     setRequests(studentId ? reqs.filter((r: any) => r.student_id === studentId) : reqs);
     setStudents(studentId ? studs.filter((s: any) => s.id === studentId) : studs);
     setLoading(false);
-  }
+  }, [studentId]);
 
   useEffect(() => {
     load();
-  }, []);
+  }, [load]);
 
   // Students who finished sign-up but have NO pending request waiting — they are
   // stuck in "preparing" because their first package failed to generate. Surface
@@ -211,11 +211,12 @@ function ReviewCard({
       const res = await adminFetch(`/api/lesson-requests/${request.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...body }),
+        body: JSON.stringify({ action, version: request.version, ...body }),
       });
       const d = await res.json();
       if (!res.ok) {
         alert(d.error || "Something went wrong.");
+        if (res.status === 409) onDone();
         return;
       }
       onDone();

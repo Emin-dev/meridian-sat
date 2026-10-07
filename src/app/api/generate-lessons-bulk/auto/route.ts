@@ -1,3 +1,5 @@
+import { guardStudentAI } from "@/lib/ratelimit";
+import { requireAdmin } from "@/lib/adminauth";
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireStudent } from "@/lib/studentauth";
@@ -47,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!studentId) return badRequest("A valid studentId is required.");
 
     // Authorize: only the student themselves (or an admin) can trigger this.
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
 
     const lessonCount = Math.max(
@@ -56,7 +58,7 @@ export async function POST(req: NextRequest) {
     );
     const totalQuestions = Math.max(
       lessonCount,
-      Number(body.totalQuestions) || AUTO_TOTAL_QUESTIONS
+      Math.min(30, Number(body.totalQuestions) || AUTO_TOTAL_QUESTIONS)
     );
 
     const supabase = getSupabaseAdmin();
@@ -119,6 +121,8 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Generate the NEXT missing lesson (one per call). ------------------
+    const { blocked } = await guardStudentAI(studentId);
+    if (blocked) return blocked;
     const planned = plan.lessons[draftCount];
 
     // NO inline retry here: a single generateOneLesson can take ~30s, so an
@@ -180,7 +184,7 @@ export async function POST(req: NextRequest) {
       done,
       generated: newCount,
       total,
-      lesson: { id: saved.id, title: saved.title, questions: generated.questions.length },
+      ...(!requireAdmin(req) ? { lesson: { id: saved.id, title: saved.title, questions: generated.questions.length } } : {}),
     });
   } catch (err) {
     return apiError("generate-lessons-bulk/auto", err);

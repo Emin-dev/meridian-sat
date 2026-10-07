@@ -1,3 +1,6 @@
+import { guardLogin } from "@/lib/login-limit";
+import { SESSION_SECONDS } from "@/lib/session";
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { adminToken } from "@/lib/adminauth";
 import { apiError } from "@/lib/api";
@@ -5,6 +8,8 @@ import { apiError } from "@/lib/api";
 // POST /api/admin-auth -> verify the admin password (set in env)
 export async function POST(req: NextRequest) {
   try {
+    const limited = await guardLogin("admin");
+    if (limited) return limited;
     const { password } = await req.json();
     const expected = process.env.ADMIN_PASSWORD;
     if (!expected) {
@@ -13,7 +18,9 @@ export async function POST(req: NextRequest) {
         { status: 500 }
       );
     }
-    if (password === expected) {
+    const supplied = typeof password === "string" ? Buffer.from(password) : Buffer.alloc(0);
+    const wanted = Buffer.from(expected);
+    if (supplied.length === wanted.length && timingSafeEqual(supplied, wanted)) {
       const token = adminToken();
       const res = NextResponse.json({ ok: true, token });
       res.cookies.set("meridian_admin", token, {
@@ -21,7 +28,7 @@ export async function POST(req: NextRequest) {
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        maxAge: 60 * 60 * 24 * 30, // 30 days
+        maxAge: SESSION_SECONDS,
       });
       return res;
     }

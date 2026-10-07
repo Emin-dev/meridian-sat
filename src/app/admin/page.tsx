@@ -234,7 +234,7 @@ export default function AdminPage() {
     if (!authed) return;
     const t = setInterval(loadDrafts, 30000);
     return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [authed]);
 
   if (initing) {

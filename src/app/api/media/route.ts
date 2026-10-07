@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   try {
     const studentId = req.nextUrl.searchParams.get("studentId");
     if (!studentId) return badRequest("studentId required");
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
     const assets = await listAssets(studentId);
     return NextResponse.json({ assets });

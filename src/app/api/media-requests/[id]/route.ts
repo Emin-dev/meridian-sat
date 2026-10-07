@@ -13,7 +13,7 @@ import { apiError, badRequest, ok, parseJsonBody } from "@/lib/api";
 // Every transition is teacher-driven. Nothing here generates media on its own.
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
@@ -31,7 +31,7 @@ export async function PATCH(
           status: action === "approve" ? "approved" : "denied",
           reviewed_at: new Date().toISOString(),
         })
-        .eq("id", params.id)
+        .eq("id", (await params).id)
         .select("*")
         .single();
       if (error) return apiError("media-requests/[id]", error);
@@ -47,7 +47,7 @@ export async function PATCH(
       const { data, error } = await supabase
         .from("media_requests")
         .update(update)
-        .eq("id", params.id)
+        .eq("id", (await params).id)
         .select("*")
         .single();
       if (error) return apiError("media-requests/[id]", error);
@@ -63,7 +63,7 @@ export async function PATCH(
 // DELETE /api/media-requests/:id  -> remove a request entirely (admin)
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
@@ -73,7 +73,7 @@ export async function DELETE(
     const { error } = await supabase
       .from("media_requests")
       .delete()
-      .eq("id", params.id);
+      .eq("id", (await params).id);
     if (error) return apiError("media-requests/[id]", error);
     return ok({ ok: true });
   } catch (err) {

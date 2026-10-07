@@ -55,7 +55,7 @@ export default function Markdown({ children }: { children: string }) {
     <div className="prose-sat">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, trust: true }]]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, trust: false }]]}
         components={{
           code({ node, className, children, ...props }: any) {
             const lang = /language-(\w+)/.exec(className || "")?.[1];

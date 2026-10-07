@@ -636,7 +636,7 @@ function VideoCard({ asset }: { asset: MediaAsset }) {
     }
     el.addEventListener("ended", onEnd);
     return () => el.removeEventListener("ended", onEnd);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [i, slides.length]);
 
   useEffect(() => {
@@ -647,7 +647,7 @@ function VideoCard({ asset }: { asset: MediaAsset }) {
     } else {
       el.pause();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [playing, i]);
 
   if (slides.length === 0) {

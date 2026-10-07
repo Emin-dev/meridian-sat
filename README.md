@@ -1,152 +1,117 @@
 # MeridianSAT
 
-A clean, modern web app that delivers **custom, personalized SAT lessons** for each
-student. As the tutor (admin) you have full control over everything students see —
-lessons, questions, study plans, and the lesson-approval workflow.
+A tutor-managed SAT learning workspace built with Next.js, TypeScript, React,
+Supabase PostgreSQL, and Tailwind CSS. Students receive personalized lessons and
+practice; tutors review drafts, publish material, and track learning activity.
 
-Built with **Next.js 14 + Supabase + Tailwind CSS**, ready to deploy on **Vercel**.
+## What it does
 
----
+- Student access-code sign-in and an onboarding survey
+- Tutor-reviewed study plans, Markdown/KaTeX lessons, and practice questions
+- Teacher-only lesson publication, student activation, and adaptive tool approval
+- Student activity and progress views, with teacher-managed AI allowances
+- Optional teacher-reviewed media requests and generation integrations
 
-## ✨ Features
+## Project status
 
-**For students** (sign in with a simple access code — no passwords):
-- A short onboarding survey, then a personalized study plan prepared by their tutor
-- Personalized concept lessons (Markdown + math rendering)
-- SAT-style practice questions with instant scoring and explanations
-- Activity tracking that helps the tutor tailor future lessons
-- Clean, mobile-friendly interface
+This repository is undergoing security maintenance. The code includes synthetic
+regression tests, but passing tests do not certify a live deployment. Review
+[SECURITY.md](SECURITY.md) and apply the database migration in an isolated staging
+project before considering a rollout. This change does not deploy the application,
+change hosted database permissions, or inspect student records.
 
-**For you, the tutor** (one password):
-- **Review queue** — every new student's plan + first lessons arrive as a request you
-  approve, refine, or send back for a better version
-- **Manage students** — add/edit/remove, set grade, target score, weak areas
-- **Insights** — engagement, time-on-task, study breakdown, streaks, labels, key
-  points, and recommendations per student
-- **Edit everything** — every lesson, question, choice, answer, explanation, and plan
-- **Lesson style** — fine-tune how lessons are written
-- **Analytics** — completions and average scores
-- **Publish/draft** — control exactly what each student sees
+The stack is preserved: Next.js 15 maintenance LTS, React 18, TypeScript, Tailwind
+CSS 3, and Supabase. Next 15.5.27 includes the [September 2026 security release](https://nextjs.org/blog/september-2026-security-release).
 
----
+## Local development
 
-## 🔄 How the lesson-approval workflow works
+Use Node.js 24 LTS and npm. Never use a production database for development or tests.
 
-1. A student signs in with their access code and completes a short survey.
-2. Their page locks into a **"tutor is preparing your lessons"** state.
-3. In the background, a personalized **study plan + first set of lessons** is drafted
-   and sent to you as a **pending request** (the student never sees draft text).
-4. In the **Review** tab you can refine the draft, edit it, **Approve** it, or
-   **Send it back & rebuild** with optional feedback for an improved version.
-5. On approval, the lessons publish and the student's page **auto-unlocks** — no
-   action needed on their side.
-
----
-
-## 🚀 Quick start (deploy to Vercel)
-
-You'll set up three things: **Supabase** (database), **GitHub** (your code),
-and **Vercel** (hosting). All have free tiers.
-
-### Step 1 — Create the Supabase database
-
-1. Go to [supabase.com](https://supabase.com) and create a free project.
-2. Open **SQL Editor → New query**.
-3. Open [`supabase/schema.sql`](./supabase/schema.sql), copy all of it, paste it
-   into the editor, and click **Run**. This creates all tables and seeds defaults.
-4. Go to **Project Settings → API** and copy the **Project URL** and **anon public**
-   key for your environment variables.
-
-### Step 2 — Push to GitHub
-
-```bash
-cd meridian-sat
-git init
-git add .
-git commit -m "Initial commit: MeridianSAT"
-# create an empty repo on github.com first, then:
-git remote add origin https://github.com/YOUR_USERNAME/meridian-sat.git
-git branch -M master
-git push -u origin master
+```sh
+npm ci
+cp .env.example .env.local
+npm run dev
 ```
 
-> The `.gitignore` already excludes `.env.local` so your keys are never committed.
+Configure an isolated Supabase project in `.env.local`:
 
-### Step 3 — Deploy on Vercel
+| Variable | Purpose |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only database credential; never expose in a browser |
+| `ADMIN_PASSWORD` | Strong, unique tutor sign-in password |
+| `STUDENT_TOKEN_SECRET` | Independent random session-signing secret, recommended |
+| `DEEPSEEK_API_KEY` | Optional lesson personalization; onboarding retains a fallback if unavailable |
+| `GEMINI_API_KEY` / `GOOGLE_API_KEY` | Optional media audio generation |
+| `YOUTUBE_API_KEY` | Optional YouTube search integration |
 
-1. Go to [vercel.com](https://vercel.com), click **Add New → Project**, and
-   import your `meridian-sat` GitHub repo.
-2. Add your environment variables (see `.env.example`).
-3. Click **Deploy**. Your app is live at `https://your-app.vercel.app`.
+Do not commit `.env.local` or credentials. Student sessions fall back to
+`ADMIN_PASSWORD` as their signing secret if `STUDENT_TOKEN_SECRET` is absent.
+Database access deliberately requires the server service-role key; an anonymous
+public key is not an acceptable replacement.
 
----
+### Database preparation
 
-## 🧑‍🏫 How to use it
+1. In the isolated project, review and run `supabase/schema.sql`.
+2. Review and run `supabase/migrations/20261007_security_boundaries.sql`.
+3. Add synthetic students through the tutor UI and exercise sign-in, onboarding,
+   review, publication, and lesson completion.
 
-1. Visit your live URL and click **Tutor** (top right). Log in with your password.
-2. **Students tab** → create a student with a name and an **access code**
-   (e.g. `EMMA2026`). Set their grade, target score, and weak areas.
-3. Give the student their access code. They sign in, complete the survey, and their
-   plan is drafted to your **Review** tab.
-4. **Review tab** → approve, refine, or send back. On approval the student unlocks.
-5. **Insights / Analytics tabs** → track progress, time, and engagement.
+The migration adds the missing tags/decorative-media schema, denies anonymous
+and ordinary authenticated direct table access, and adds atomic quota, login,
+and onboarding functions used by the server. Authentication fails closed if these
+functions are missing. Application API routes perform role and ownership checks;
+RLS is an additional database boundary, not a substitute for those checks.
 
----
+No hosted migration is performed by tests, CI, `npm run build`, or this README.
+Existing databases and storage settings need a separate reviewed rollout.
 
-## 💻 Run locally (optional)
+## Verification
 
-```bash
-cp .env.example .env.local   # then fill in your real keys
-npm install
-npm run dev                  # http://localhost:3000
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run build
+npm run test:smoke
+# Or run lint, all tests, and the production build together:
+npm run check
+npm audit
 ```
 
----
+Tests use fabricated fixtures and a disposable in-memory PostgreSQL-compatible
+PGlite database. They cover sessions, credential rotation, role/owner/publication
+boundaries, quota updates, login limits, RLS/grants, idempotent onboarding, and
+delayed generation without overwriting tutor edits. The HTTP smoke check starts
+the production server on loopback and verifies anonymous API rejection.
+They do not use live Supabase credentials or AI providers. Remaining dependency advisories and deployment review limits are documented
+in `SECURITY.md`.
 
-## 🔐 Security notes
+## Teaching workflow
 
-- API keys live only in environment variables, never in the code.
-- Server-only keys are used **server-side only** (inside `/api` routes) and never
-  sent to the browser.
-- For a small private tutoring setup this auth (one tutor password + per-student
-  access codes) is simple and effective. For stronger security you can later layer
-  in Supabase Auth and Row Level Security.
+1. The tutor creates a student and shares a unique access code privately.
+2. The student submits the survey. A single pending review request is filed
+   atomically, with a usable fallback if personalization cannot run.
+3. The tutor reviews the request and publishes suitable material.
+4. Students can access their own published lessons and approved tools. They
+   cannot activate themselves or retrieve teacher notes or access codes.
+5. Changing an access code revokes that student's existing sessions. Changing
+   the tutor password revokes existing tutor sessions.
 
----
+## Structure
 
-## 🛠 Tech stack
+- `src/app/api/`: server routes, authorization, and workflow operations
+- `src/app/student/`, `src/app/admin/`: student and tutor interfaces
+- `src/components/`: reusable interface, lesson, review, and media components
+- `src/lib/`: session, database, AI, tracking, and response helpers
+- `supabase/`: base schema and reviewed migration proposals
+- `tests/`: isolated synthetic regression tests
+- `.github/workflows/ci.yml`: source checks and production build, no deployment
 
-- **Next.js 14** (App Router, API routes)
-- **Supabase** (PostgreSQL)
-- **Tailwind CSS** + lucide-react icons
-- **react-markdown** + **KaTeX** for lesson + math rendering
+## Contributing
 
----
-
-## 📁 Project structure
-
-```
-meridian-sat/
-├── src/
-│   ├── app/
-│   │   ├── page.tsx              # Student access-code sign in (home)
-│   │   ├── student/page.tsx      # Student dashboard + lessons + practice
-│   │   ├── admin/page.tsx        # Tutor dashboard (all controls)
-│   │   └── api/                  # Server routes (Supabase + lesson generation)
-│   ├── components/
-│   │   ├── ui.tsx                # Buttons, cards, inputs, logo
-│   │   ├── Markdown.tsx          # Markdown + math renderer
-│   │   ├── Onboarding.tsx        # Student onboarding survey
-│   │   ├── Preparing.tsx         # Locked "preparing" waiting screen
-│   │   ├── AdminReview.tsx       # Lesson-approval review queue
-│   │   ├── AdminInsights.tsx     # Per-student insights
-│   │   └── LessonEditor.tsx      # Full lesson editor (tutor)
-│   └── lib/
-│       ├── supabase.ts           # DB client + types
-│       ├── insights.ts           # Engagement + study breakdown
-│       ├── lessongen.ts          # Draft package generation
-│       └── track.ts              # Client activity tracking
-├── supabase/schema.sql           # Run this in Supabase once
-├── .env.example                  # Copy to .env.local
-└── README.md
-```
+Keep changes focused and preserve the existing TypeScript/React patterns. Add
+regression tests for security boundaries, use synthetic records, and include
+verification results and remaining limits in pull requests. Do not include
+student data, access codes, backups, credentials, or generated private media in
+issues, fixtures, logs, screenshots, or commits.

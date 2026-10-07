@@ -160,8 +160,8 @@ export default function MediaRequestsQueue({ studentId }: { studentId: string })
       </div>
 
       <p className="mt-3 text-xs text-ink-muted">
-        Approve a request, then create the media using the tools below. When it's
-        ready, choose “Mark created” to clear it from the student's pending list.
+        Approve a request, then create the media using the tools below. When it&apos;s
+        ready, choose “Mark created” to clear it from the student&apos;s pending list.
       </p>
     </Card>
   );

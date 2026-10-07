@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   // A student may only read their OWN tools; the admin queue (no studentId, or
   // status=pending) requires an admin token.
   if (studentId) {
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
   } else {
     const unauth = requireAdmin(req);
@@ -27,9 +27,10 @@ export async function GET(req: NextRequest) {
 
     let q = supabase
       .from("student_tools")
-      .select("*, students(name, access_code, status)")
+      .select(!requireAdmin(req) ? "*, students(name, access_code, status)" : "id, student_id, status, kind, key, title, description, icon, config, created_at, reviewed_at")
       .order("created_at", { ascending: false });
-    if (status) q = q.eq("status", status);
+    if (requireAdmin(req)) q = q.eq("status", "approved");
+    else if (status) q = q.eq("status", status);
     if (studentId) q = q.eq("student_id", studentId);
 
     const { data, error } = await q;

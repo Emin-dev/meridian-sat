@@ -266,7 +266,7 @@ export default function StudentMedia({ studentId }: { studentId: string }) {
                     className="aspect-video w-full bg-brand-50 object-cover"
                   />
                 ) : a.kind === "video" && a.url ? (
-                  // eslint-disable-next-line jsx-a11y/media-has-caption
+
                   <video
                     src={a.url}
                     poster={a.thumbnail_url || undefined}

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { isValidAdminToken } from "@/lib/adminauth";
-import { isValidStudentToken } from "@/lib/studentauth";
+import { isValidStudentToken, requireStudent } from "@/lib/studentauth";
 import { apiError, badRequest, ok, parseJsonBody, reqString, reqId } from "@/lib/api";
 
 /**
@@ -21,10 +21,8 @@ import { apiError, badRequest, ok, parseJsonBody, reqString, reqId } from "@/lib
  * fully reversible).
  *
  * Auth:
- *  - GET is open. It only reveals which decorations are hidden, and global
- *    hides must apply on the pre-login home page too. A studentId, when passed,
- *    layers that student's personal hides on top (no token needed to READ which
- *    of your own decorations are hidden — it exposes nothing sensitive).
+ *  - Global GET is public so hides apply before login. Personal hides require
+ *    the matching student session or an admin.
  *  - POST requires the matching token: admin for global writes, the student's
  *    own token (or an admin) for student writes.
  */
@@ -39,6 +37,11 @@ export async function GET(req: NextRequest) {
     const rawStudent = url.searchParams.get("studentId");
     const studentId = rawStudent ? reqId(rawStudent) : null;
 
+    if (rawStudent && !studentId) return badRequest("Invalid studentId.");
+    if (studentId) {
+      const unauth = await requireStudent(req, studentId);
+      if (unauth) return unauth;
+    }
     const supabase = getSupabaseAdmin();
 
     const { data: globalRows, error: gErr } = await supabase
@@ -102,7 +105,7 @@ export async function POST(req: NextRequest) {
 
       const sTok = req.headers.get("x-student-token");
       const aTok = req.headers.get("x-admin-token");
-      const okStudent = isValidStudentToken(studentId, sTok);
+      const okStudent = await isValidStudentToken(studentId, sTok);
       const okAdmin = aTok && isValidAdminToken(aTok);
       if (!okStudent && !okAdmin) {
         return NextResponse.json({ error: "Unauthorized." }, { status: 401 });

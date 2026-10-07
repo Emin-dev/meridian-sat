@@ -14,7 +14,7 @@ import { apiError } from "@/lib/api";
 // teacher sets it to "approved" here.
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
@@ -32,7 +32,7 @@ export async function PATCH(
       const { data, error } = await supabase
         .from("student_tools")
         .update(update)
-        .eq("id", params.id)
+        .eq("id", (await params).id)
         .select("*")
         .single();
       if (error) return apiError("student-tools/[id]", error, 500);
@@ -46,7 +46,7 @@ export async function PATCH(
           status: action === "approve" ? "approved" : "denied",
           reviewed_at: new Date().toISOString(),
         })
-        .eq("id", params.id)
+        .eq("id", (await params).id)
         .select("*")
         .single();
       if (error) return apiError("student-tools/[id]", error, 500);
@@ -62,14 +62,14 @@ export async function PATCH(
 // DELETE /api/student-tools/:id  -> remove a proposal entirely
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
 
   try {
     const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("student_tools").delete().eq("id", params.id);
+    const { error } = await supabase.from("student_tools").delete().eq("id", (await params).id);
     if (error) return apiError("student-tools/[id]", error, 500);
     return NextResponse.json({ ok: true });
   } catch (err) {

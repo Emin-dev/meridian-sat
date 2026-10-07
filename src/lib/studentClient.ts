@@ -8,8 +8,8 @@
  * unreliable inside sandboxed iframes) and attach it as the `x-student-token`
  * header on every student API request via studentFetch().
  *
- * On a hard refresh the token is lost; the student app re-establishes it by
- * re-authing with the id in the URL (see ensureStudentToken in the student page).
+ * On refresh the student page restores the signed token from the URL fragment.
+ * The id alone never authorizes a request; expired tokens require a new login.
  */
 
 let token: string | null = null;

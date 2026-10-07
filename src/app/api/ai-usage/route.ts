@@ -10,7 +10,7 @@ import { apiError, badRequest, ok, parseJsonBody } from "@/lib/api";
 export async function GET(req: NextRequest) {
   const studentId = req.nextUrl.searchParams.get("studentId");
   if (!studentId) return badRequest("studentId required");
-  const unauth = requireStudent(req, studentId);
+  const unauth = await requireStudent(req, studentId);
   if (unauth) return unauth;
   try {
     const status = await peekUsage(studentId);

@@ -27,6 +27,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  useRef,
   ReactNode,
 } from "react";
 
@@ -58,6 +59,8 @@ export function DecorMediaProvider({
   authHeaders?: () => AuthHeaders;
   children: ReactNode;
 }) {
+  const headersRef = useRef(authHeaders);
+  headersRef.current = authHeaders;
   const [globalHidden, setGlobalHidden] = useState<Set<string>>(new Set());
   const [studentHidden, setStudentHidden] = useState<Set<string>>(new Set());
   const [ready, setReady] = useState(false);
@@ -65,7 +68,7 @@ export function DecorMediaProvider({
   const load = useCallback(async () => {
     try {
       const qs = studentId ? `?studentId=${encodeURIComponent(studentId)}` : "";
-      const res = await fetch(`/api/ui-media${qs}`);
+      const res = await fetch(`/api/ui-media${qs}`, { headers: headersRef.current?.() });
       if (res.ok) {
         const d = await res.json();
         setGlobalHidden(new Set<string>(d.globalHidden || []));

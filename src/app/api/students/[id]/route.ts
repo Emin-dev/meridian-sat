@@ -1,3 +1,4 @@
+import { studentView } from "@/lib/student-view";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
@@ -8,35 +9,35 @@ import { apiError, ok, parseJsonBody } from "@/lib/api";
 // its OWN record; requireStudent ensures the caller owns this id (admins allowed).
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauth = requireStudent(req, params.id);
+  const unauth = await requireStudent(req, (await params).id);
   if (unauth) return unauth;
   try {
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("students")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", (await params).id)
       .maybeSingle();
     if (error) return apiError("students/[id]:GET", error);
     if (!data) return apiError("students/[id]:GET", "not found", 404, "Not found.");
-    return ok({ student: data });
+    return ok({ student: !requireAdmin(req) ? data : studentView(data) });
   } catch (err) {
     return apiError("students/[id]:GET", err);
   }
 }
 
 // PATCH /api/students/:id -> update a student.
-// Admins can edit everything. The student themselves may only change onboarding
-// lifecycle fields on their OWN record (requireStudent gates ownership).
+// Teacher-only edits. Student onboarding uses its own atomic transition endpoint.
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const unauth = requireStudent(req, params.id);
+  const unauth = await requireStudent(req, (await params).id);
   if (unauth) return unauth;
   const isAdmin = !requireAdmin(req);
+  if (!isAdmin) return apiError("students/[id]:PATCH", "forbidden", 403, "Only your tutor can update this record.");
   try {
     const body = await parseJsonBody<Record<string, any>>(req);
     if (!body) return apiError("students/[id]:PATCH", "bad body", 400, "Invalid request.");
@@ -61,21 +62,16 @@ export async function PATCH(
     ]) {
       if (k in body) update[k] = body[k];
     }
-    // A non-admin (the student) may only touch onboarding lifecycle fields.
-    if (!isAdmin) {
-      const allowed = new Set(["onboarded", "status", "survey"]);
-      for (const k of Object.keys(update)) {
-        if (!allowed.has(k)) delete update[k];
-      }
-    }
+    // Onboarding is a single controlled transition in /api/onboarding.
+    // Students cannot activate themselves or alter teacher-managed fields.
     const { data, error } = await supabase
       .from("students")
       .update(update)
-      .eq("id", params.id)
+      .eq("id", (await params).id)
       .select()
       .single();
     if (error) return apiError("students/[id]:PATCH", error);
-    return ok({ student: data });
+    return ok({ student: !requireAdmin(req) ? data : studentView(data) });
   } catch (err) {
     return apiError("students/[id]:PATCH", err);
   }
@@ -84,13 +80,13 @@ export async function PATCH(
 // DELETE /api/students/:id (admin only)
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
   try {
     const supabase = getSupabaseAdmin();
-    const { error } = await supabase.from("students").delete().eq("id", params.id);
+    const { error } = await supabase.from("students").delete().eq("id", (await params).id);
     if (error) return apiError("students/[id]:DELETE", error);
     return ok({ ok: true });
   } catch (err) {
