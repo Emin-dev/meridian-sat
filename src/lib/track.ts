@@ -1,5 +1,7 @@
 "use client";
 
+import { studentFetch } from "@/lib/studentClient";
+
 // ---------------------------------------------------------------------------
 // Client-side activity tracking
 // ---------------------------------------------------------------------------
@@ -53,19 +55,8 @@ export function createTracker(studentId: string): Tracker {
     queue = [];
     const payload = JSON.stringify({ studentId, batch });
 
-    // sendBeacon survives page unload; fall back to fetch keepalive.
-    if (useBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
-      try {
-        navigator.sendBeacon(
-          "/api/events",
-          new Blob([payload], { type: "application/json" })
-        );
-        return;
-      } catch {
-        /* fall through to fetch */
-      }
-    }
-    fetch("/api/events", {
+    // sendBeacon cannot carry our authorization header; keepalive fetch can.
+    studentFetch("/api/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: payload,
@@ -108,10 +99,12 @@ export function createTracker(studentId: string): Tracker {
       if (document.visibilityState === "hidden") flush(true);
     };
     document.addEventListener("visibilitychange", onHide);
-    window.addEventListener("pagehide", () => flush(true));
+    const onPageHide = () => flush(true);
+    window.addEventListener("pagehide", onPageHide);
     // store remover on the closure via dispose
     (track as any)._cleanup = () => {
       document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
     };
   }
 

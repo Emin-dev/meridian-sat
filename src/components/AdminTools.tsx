@@ -128,7 +128,7 @@ export default function AdminTools({
             <Wand2 size={17} />
           </span>
           <div>
-            <h3 className="font-bold text-ink">Personalize a student's workspace</h3>
+            <h3 className="font-bold text-ink">Personalize a student&apos;s workspace</h3>
             <p className="text-sm text-ink-muted">
               Suggest new tools based on how a student actually studies. You approve
               before anything appears for them.

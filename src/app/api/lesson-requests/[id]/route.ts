@@ -10,7 +10,7 @@ export const maxDuration = 60;
 // GET /api/lesson-requests/:id  -> single request with student
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
@@ -20,7 +20,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("lesson_requests")
       .select("*, students(*)")
-      .eq("id", params.id)
+      .eq("id", (await params).id)
       .single();
     if (error) return apiError("lesson-requests/[id]", error, 404);
     return NextResponse.json({ request: data });
@@ -39,7 +39,7 @@ export async function GET(
 //   discuss    { message }                                     -> chat with AI about this draft
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const unauth = requireAdmin(req);
   if (unauth) return unauth;
@@ -52,12 +52,16 @@ export async function PATCH(
     const { data: reqRow, error: rErr } = await supabase
       .from("lesson_requests")
       .select("*, students(*)")
-      .eq("id", params.id)
+      .eq("id", (await params).id)
       .single();
     if (rErr || !reqRow) {
       return NextResponse.json({ error: "Request not found." }, { status: 404 });
     }
     const student = (reqRow as any).students;
+    if ((action === "approve" || action === "edit") &&
+        (!Number.isInteger(body.version) || body.version !== reqRow.version || reqRow.status !== "pending")) {
+      return NextResponse.json({ error: "This draft changed. Reload it before reviewing again." }, { status: 409 });
+    }
 
     // ----- teacher manual edits -----------------------------------------
     if (action === "edit") {
@@ -65,57 +69,30 @@ export async function PATCH(
       for (const k of ["study_plan", "ai_summary", "notes", "lessons"]) {
         if (k in body) update[k] = body[k];
       }
+      // Revision changes prevent a delayed onboarding generator from replacing
+      // a teacher's manual work. Concurrent edits use the same compare-and-swap.
+      update.version = Number(reqRow.version || 1) + 1;
       const { data, error } = await supabase
         .from("lesson_requests")
         .update(update)
-        .eq("id", params.id)
+        .eq("id", (await params).id)
+        .eq("version", reqRow.version)
+        .eq("status", "pending")
         .select()
         .single();
+      if (error?.code === "PGRST116") return NextResponse.json({ error: "This draft changed. Reload it before reviewing again." }, { status: 409 });
       if (error) return apiError("lesson-requests/[id]", error, 500);
       return NextResponse.json({ request: data });
     }
 
     // ----- approve: publish to student, unlock --------------------------
     if (action === "approve") {
-      // 1) Insert each draft lesson as a published lesson for the student.
-      const lessons = Array.isArray(reqRow.lessons) ? reqRow.lessons : [];
-      if (lessons.length > 0) {
-        const rows = lessons.map((l: any) => ({
-          student_id: reqRow.student_id,
-          title: l.title || "Lesson",
-          section: l.section || "Math",
-          topic: l.topic || "",
-          difficulty: l.difficulty || "Medium",
-          content: l.content || "",
-          questions: l.questions || [],
-          study_plan: l.study_plan || "",
-          status: "published",
-        }));
-        const { error: lErr } = await supabase.from("lessons").insert(rows);
-        if (lErr) return apiError("lesson-requests/[id]", lErr, 500);
-      }
-
-      // 2) Activate the student and publish plan + summary.
-      const { error: sErr } = await supabase
-        .from("students")
-        .update({
-          status: "active",
-          study_plan: reqRow.study_plan || "",
-          ai_summary: reqRow.ai_summary || "",
-          notes: reqRow.notes || student?.notes || "",
-        })
-        .eq("id", reqRow.student_id);
-      if (sErr) return apiError("lesson-requests/[id]", sErr, 500);
-
-      // 3) Mark this request approved.
-      const { data, error } = await supabase
-        .from("lesson_requests")
-        .update({ status: "approved", reviewed_at: new Date().toISOString() })
-        .eq("id", params.id)
-        .select()
-        .single();
-      if (error) return apiError("lesson-requests/[id]", error, 500);
-      return NextResponse.json({ request: data, published: lessons.length });
+      const { data, error } = await supabase.rpc("approve_lesson_request", {
+        p_request_id: (await params).id, p_request_version: body.version,
+      });
+      if (error) return apiError("lesson-requests/[id]", error);
+      if (data?.conflict) return NextResponse.json({ error: "This draft changed. Reload it before reviewing again." }, { status: 409 });
+      return NextResponse.json(data);
     }
 
     // ----- deny / regenerate: build a new, better version ---------------
@@ -130,7 +107,7 @@ export async function PATCH(
           feedback,
           reviewed_at: new Date().toISOString(),
         })
-        .eq("id", params.id);
+        .eq("id", (await params).id);
 
       // Build an improved package using the teacher's feedback + previous draft.
       const pkg = await generateDraftPackage(student, student.survey || {}, {
@@ -196,7 +173,7 @@ teacher: ${message}`;
       const { data, error } = await supabase
         .from("lesson_requests")
         .update({ discussion: newDiscussion })
-        .eq("id", params.id)
+        .eq("id", (await params).id)
         .select()
         .single();
       if (error) return apiError("lesson-requests/[id]", error, 500);

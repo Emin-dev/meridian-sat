@@ -1,3 +1,4 @@
+import { ownsPublishedLessons } from "@/lib/lesson-access";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
@@ -9,7 +10,7 @@ import { apiError, badRequest, ok, parseJsonBody, reqId } from "@/lib/api";
 export async function GET(req: NextRequest) {
   const studentId = req.nextUrl.searchParams.get("studentId");
   if (studentId) {
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
   } else {
     const unauth = requireAdmin(req);
@@ -36,11 +37,15 @@ export async function POST(req: NextRequest) {
     const studentId = reqId(body.student_id);
     if (!studentId) return badRequest("A valid student_id is required.");
 
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
 
     const supabase = getSupabaseAdmin();
 
+    const lessonId = reqId(body.lesson_id);
+    if (!lessonId || !await ownsPublishedLessons(studentId, [lessonId], !requireAdmin(req))) {
+      return badRequest("Lesson unavailable.");
+    }
     // does a row already exist?
     const { data: existing } = await supabase
       .from("progress")

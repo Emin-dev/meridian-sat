@@ -10,7 +10,7 @@ import { apiError, ok, parseJsonBody } from "@/lib/api";
 export async function GET(req: NextRequest) {
   const studentId = req.nextUrl.searchParams.get("studentId");
   if (studentId) {
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
   } else {
     const unauth = requireAdmin(req);
@@ -20,6 +20,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     let q = supabase.from("lessons").select("*").order("created_at", { ascending: false });
     if (studentId) q = q.eq("student_id", studentId);
+    if (requireAdmin(req)) q = q.eq("status", "published");
     const { data, error } = await q;
     if (error) return apiError("lessons:GET", error);
     return ok({ lessons: data });

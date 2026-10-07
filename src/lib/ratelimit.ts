@@ -93,13 +93,14 @@ export async function guardStudentAI(
  */
 export async function peekUsage(studentId: string): Promise<RateStatus> {
   const supabase = getSupabaseAdmin();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("ai_usage")
     .select("count, bonus, last_request_at, blocked_until")
     .eq("student_id", studentId)
     .eq("day", utcDay())
     .maybeSingle();
 
+  if (error) throw error;
   const count = data?.count ?? 0;
   const bonus = data?.bonus ?? 0;
   const blockedUntil = data?.blocked_until ?? null;
@@ -119,107 +120,23 @@ export async function checkAndConsume(
   studentId: string,
   opts: { commit?: boolean } = {}
 ): Promise<RateStatus> {
-  const commit = opts.commit !== false;
-  const supabase = getSupabaseAdmin();
-  const day = utcDay();
-
-  // Fetch current row (create lazily on first request of the day).
-  const { data: existing } = await supabase
-    .from("ai_usage")
-    .select("id, count, bonus, last_request_at, blocked_until")
-    .eq("student_id", studentId)
-    .eq("day", day)
-    .maybeSingle();
-
-  const count = existing?.count ?? 0;
-  const bonus = existing?.bonus ?? 0;
-  const lastAt = existing?.last_request_at ?? null;
-  let blockedUntil = existing?.blocked_until ?? null;
-
-  // If a stale block has expired, clear it before evaluating.
-  if (blockedUntil && new Date(blockedUntil).getTime() <= Date.now()) {
-    blockedUntil = null;
+  const { data, error } = await getSupabaseAdmin().rpc("consume_ai_usage", {
+    p_student_id: studentId, p_commit: opts.commit !== false,
+  });
+  if (error || !data || typeof data.allowed !== "boolean") {
+    throw error || new Error("AI quota service is unavailable.");
   }
-
-  const status = evaluate(count, bonus, lastAt, blockedUntil, true);
-
-  if (!status.allowed) {
-    // If we just crossed into the hard ceiling, persist a block window so the
-    // student stays blocked for BLOCK_HOURS (or until admin grants more).
-    if (status.tier === "block" && !blockedUntil) {
-      const until = new Date(Date.now() + BLOCK_HOURS * 3600 * 1000).toISOString();
-      await upsertUsage(supabase, existing?.id, studentId, day, count, bonus, lastAt, until);
-      status.blockedUntil = until;
-      status.retryAfter = BLOCK_HOURS * 3600;
-    }
-    return status;
-  }
-
-  if (commit) {
-    const now = new Date().toISOString();
-    const newCount = count + 1;
-    await upsertUsage(supabase, existing?.id, studentId, day, newCount, bonus, now, blockedUntil);
-    // Re-evaluate with the committed count so the caller sees post-increment tier.
-    const after = evaluate(newCount, bonus, now, blockedUntil, true);
-    after.allowed = true;
-    return after;
-  }
-
+  const status = evaluate(data.count, data.bonus, data.last_request_at, data.blocked_until, !data.allowed);
+  status.allowed = data.allowed;
   return status;
 }
 
-/**
- * Admin action: grant a student extra requests for today. Adds to `bonus`,
- * which raises every threshold, and clears any active block.
- */
+/** Atomic tutor bonus adjustment, serialized with consumption. */
 export async function grantBonus(studentId: string, amount: number): Promise<RateStatus> {
-  const supabase = getSupabaseAdmin();
-  const day = utcDay();
-  const { data: existing } = await supabase
-    .from("ai_usage")
-    .select("id, count, bonus, last_request_at")
-    .eq("student_id", studentId)
-    .eq("day", day)
-    .maybeSingle();
-
-  const newBonus = (existing?.bonus ?? 0) + amount;
-  await upsertUsage(
-    supabase,
-    existing?.id,
-    studentId,
-    day,
-    existing?.count ?? 0,
-    newBonus,
-    existing?.last_request_at ?? null,
-    null // clear any block
-  );
+  if (!Number.isInteger(amount) || amount < 1 || amount > 1000) throw new Error("Invalid bonus.");
+  const { error } = await getSupabaseAdmin().rpc("grant_ai_bonus", { p_student_id: studentId, p_amount: amount });
+  if (error) throw error;
   return peekUsage(studentId);
-}
-
-async function upsertUsage(
-  supabase: any,
-  id: string | undefined,
-  studentId: string,
-  day: string,
-  count: number,
-  bonus: number,
-  lastAt: string | null,
-  blockedUntil: string | null
-) {
-  const row = {
-    student_id: studentId,
-    day,
-    count,
-    bonus,
-    last_request_at: lastAt,
-    blocked_until: blockedUntil,
-  };
-  if (id) {
-    await supabase.from("ai_usage").update(row).eq("id", id);
-  } else {
-    // onConflict on the UNIQUE(student_id, day) constraint handles races.
-    await supabase.from("ai_usage").upsert(row, { onConflict: "student_id,day" });
-  }
 }
 
 /**

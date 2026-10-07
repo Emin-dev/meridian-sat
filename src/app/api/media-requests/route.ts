@@ -1,3 +1,4 @@
+import { ownsPublishedLessons } from "@/lib/lesson-access";
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { requireAdmin } from "@/lib/adminauth";
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
   const studentId = searchParams.get("studentId");
 
   if (studentId) {
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
   } else {
     const unauth = requireAdmin(req);
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
     const supabase = getSupabaseAdmin();
     let q = supabase
       .from("media_requests")
-      .select("*, students(name, access_code, status)")
+      .select(!requireAdmin(req) ? "*, students(name, access_code, status)" : "id, student_id, lesson_id, kind, topic, note, status, created_at")
       .order("created_at", { ascending: false });
     if (status) q = q.eq("status", status);
     if (studentId) q = q.eq("student_id", studentId);
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
     const studentId = reqId(body.studentId);
     if (!studentId) return badRequest("A valid student id is required.");
 
-    const unauth = requireStudent(req, studentId);
+    const unauth = await requireStudent(req, studentId);
     if (unauth) return unauth;
 
     const topic = reqString(body.topic, { max: 500 });
@@ -66,6 +67,9 @@ export async function POST(req: NextRequest) {
     const note = reqString(body.note, { max: 1000 }) || "";
     const lessonId = body.lessonId ? reqId(body.lessonId) : null;
 
+    if (body.lessonId && (!lessonId || !await ownsPublishedLessons(studentId, [lessonId], !requireAdmin(req)))) {
+      return badRequest("Lesson unavailable.");
+    }
     const supabase = getSupabaseAdmin();
     const { data, error } = await supabase
       .from("media_requests")

@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
       if (unauth) return unauth;
       return await adminAssistant(supabase, body?.tab || "review");
     }
-    const unauth = requireStudent(req, body?.studentId);
+    const unauth = await requireStudent(req, body?.studentId);
     if (unauth) return unauth;
     return await studentAssistant(supabase, body?.studentId);
   } catch (err) {
